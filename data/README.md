@@ -1,41 +1,23 @@
-# Struktur dataset untuk YOLO26n-depth
+# Data YOLO26n-depth
 
-Gunakan folder ini sebagai struktur dataset latih dan validasi.
+Simpan dataset NYU Depth V2 lokal di folder ini sebagai
+`nyu_depth_v2_labeled.mat`. Dataset tidak disertakan di repository.
 
 ```text
 data/
-  train/
-    images/
-    depth/
-  val/
-    images/
-    depth/
+  nyu_depth_v2_labeled.mat
 ```
 
-Aturan:
-- File RGB dan depth harus memiliki nama yang sama.
-- Format gambar sesuai: .jpg, .png, .jpeg, .bmp, .webp
-- Depth dapat berupa grayscale atau map kedalaman 1 channel.
-- Jika depth tidak tersedia, program akan mencoba membuat pseudo-depth otomatis.
-
-Contoh:
-- data/train/images/frame_001.jpg
-- data/train/depth/frame_001.png
-
-Untuk mulai training:
+Untuk training dengan arsitektur YOLO26n-Depth, gunakan trainer NYU:
 
 ```powershell
-python .\arsitektur_yolo_depth.py --mode train --image-dir .\data\train\images --depth-dir .\data\train\depth --epochs 5 --lr 1e-3
+.\.venv\Scripts\python.exe penting\train_nyu_colab.py `
+  --nyu-path data\nyu_depth_v2_labeled.mat `
+  --output data\yolo26n_depth_pdf_best.pt
 ```
 
 Untuk verifikasi arsitektur:
 
 ```powershell
-python .\arsitektur_yolo_depth.py --mode verify
-```
-
-Untuk demo kamera live:
-
-```powershell
-python .\arsitektur_yolo_depth.py --mode camera
+.\.venv\Scripts\python.exe penting\arsitektur_yolo_depth.py --mode verify
 ```

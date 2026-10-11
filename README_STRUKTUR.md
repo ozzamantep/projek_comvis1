@@ -35,7 +35,7 @@ backup tersebut sengaja tidak memuat `.venv/` atau file `.pt`.
 
 | File | Fungsi |
 |---|---|
-| `arsitektur_yolo_depth.py` | Definisi model lokal `YOLO26nDepth`, dataset NYU, training, dan mode demo/validasi model. |
+| `arsitektur_yolo_depth.py` | Definisi arsitektur `YOLO26nDepth`, dataset NYU bersama, pemeriksaan checkpoint, dan mode verifikasi model. |
 | `kamera_yolo26_depth.py` | Runner kamera baseline yang dibahas pada Bab 2, dengan pilihan backend lokal atau Ultralytics. |
 | `train_nyu_colab.py` | Trainer NYU Depth V2 30 epoch yang memakai arsitektur lokal. |
 | `camera_yolo26_depth_metric.py` | Runner dua-model: detector COCO `data/yolo26n.pt` dan model depth lokal. |
@@ -44,7 +44,7 @@ backup tersebut sengaja tidak memuat `.venv/` atau file `.pt`.
 | `validate_metric_photos.py` | Validasi jarak dari foto dengan input pengukuran meteran. |
 | `calibrate_depth.py` | Fit koreksi rasio atau regresi linear dari CSV validasi. |
 | `diagnose_depth_inference.py` | Perbandingan preprocessing NYU/kamera dan pemeriksaan output depth pada banyak input. |
-| `tests/` | Unit test untuk utilitas depth, evaluator, dan kalibrasi. |
+| `tests/` | Unit test untuk utilitas depth, evaluator, kalibrasi, dan kompatibilitas checkpoint. |
 
 ## Isi `pendukung/`
 
@@ -72,9 +72,9 @@ Checkpoint di `data/pendukung/`:
 
 Checkpoint utama `data/yolo26n.pt` (detector) dan
 `data/yolo26n_depth_nyu_full.pt` (depth lokal) tetap di `data/`. `data/` dan
-dataset `.mat` tidak dipindahkan. Checkpoint `yolo26n_depth_nyu.pt` dan
-`yolo26n_depth_trained.pt` tetap di root `data/` karena nama-namanya masih
-dirujuk oleh default fungsi/CLI dalam arsitektur.
+dataset `.mat` tidak dipindahkan. Training utama dijalankan melalui
+`train_nyu_colab.py`; file arsitektur hanya menyediakan dataset, model,
+pemeriksaan checkpoint, dan verifikasi.
 
 ## Perintah menjalankan
 

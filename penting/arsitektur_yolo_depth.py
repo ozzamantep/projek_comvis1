@@ -239,178 +239,6 @@ def load_depth_checkpoint(
         ) from error
 
 
-def load_model_with_weights(weights_path='data/yolo26n_depth_nyu_full.pt'):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = YOLO26nDepth(width_mult=0.25, depth_mult=0.50).to(device)
-    load_depth_checkpoint(model, weights_path, device)
-    print(f"Loaded weights from: {weights_path}")
-    model.eval()
-    return model, device
-
-
-def preprocess_image_for_model(image_bgr):
-    rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    img = torch.from_numpy(rgb.transpose(2, 0, 1)).float() / 255.0
-    return img.unsqueeze(0)
-
-
-def infer_depth_from_image(model, image_bgr, device):
-    img = preprocess_image_for_model(image_bgr).to(device)
-
-    with torch.no_grad():
-        pred = model(img)
-
-    depth_map = pred['depth'][0, 0].cpu().numpy()
-    depth_norm = normalize_depth_for_display(depth_map)
-    depth_vis = (depth_norm * 255.0).astype(np.uint8)
-    depth_color = cv2.applyColorMap(depth_vis, cv2.COLORMAP_MAGMA)
-    return depth_color
-
-
-def normalize_depth_for_display(depth_map):
-    low = float(np.percentile(depth_map, 2.0))
-    high = float(np.percentile(depth_map, 98.0))
-    depth_range = high - low
-
-    if depth_range < 0.01:
-        return np.zeros_like(depth_map, dtype=np.float32)
-
-    return np.clip((depth_map - low) / depth_range, 0.0, 1.0).astype(np.float32)
-
-
-def run_image_inference(image_path, weights_path='data/yolo26n_depth_trained.pt'):
-    model, device = load_model_with_weights(weights_path)
-    image_bgr = cv2.imread(image_path, cv2.IMREAD_COLOR)
-
-    if image_bgr is None:
-        print(f"Gagal membaca gambar: {image_path}")
-        return
-
-    depth_color = infer_depth_from_image(model, image_bgr, device)
-    h, w = image_bgr.shape[:2]
-    depth_color = cv2.resize(depth_color, (w, h))
-
-    combined = np.hstack([image_bgr, depth_color])
-    cv2.imshow("Image + Depth Map (YOLO26n-depth)", combined)
-    print(f"Menampilkan hasil inferensi dari: {image_path}")
-    print("Tekan tombol apapun pada jendela untuk menutup.")
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-
-def find_first_image_path(image_dir=None):
-    candidates = []
-    if image_dir and os.path.isdir(image_dir):
-        for root, _, files in os.walk(image_dir):
-            for file in files:
-                if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp')):
-                    candidates.append(os.path.join(root, file))
-
-    if candidates:
-        return sorted(candidates)[0]
-
-    for folder in ['data/train/images', 'data/val/images', 'data']:
-        if os.path.isdir(folder):
-            for root, _, files in os.walk(folder):
-                for file in files:
-                    if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp')):
-                        return os.path.join(root, file)
-    return None
-
-
-def run_live_camera(weights_path='data/yolo26n_depth_trained.pt'):
-    model, device = load_model_with_weights(weights_path)
-
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        print("Kamera tidak tersedia atau tidak bisa dibuka.")
-        print("Coba jalankan mode image untuk melihat hasil depth tanpa webcam.")
-        return
-
-    print(f"Model berjalan pada device: {device}")
-    print("Tekan 'q' untuk keluar dari jendela kamera.")
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Gagal membaca frame dari kamera.")
-            break
-
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = torch.from_numpy(rgb.transpose(2, 0, 1)).float() / 255.0
-        img = img.unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            pred = model(img)
-
-        depth_map = pred['depth'][0, 0].cpu().numpy()
-        depth_norm = normalize_depth_for_display(depth_map)
-        depth_vis = (depth_norm * 255.0).astype(np.uint8)
-        depth_color = cv2.applyColorMap(depth_vis, cv2.COLORMAP_MAGMA)
-        h, w = frame.shape[:2]
-        depth_color = cv2.resize(depth_color, (w, h))
-
-        raw_range = float(depth_map.max() - depth_map.min())
-        if raw_range < 0.01:
-            cv2.putText(
-                depth_color,
-            'DEPTH BELUM VALID - TRAIN DENGAN DATA RGB-D NYATA',
-                (20, 35),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 255),
-                2,
-                cv2.LINE_AA,
-            )
-
-        combined = np.hstack([frame, depth_color])
-        cv2.imshow("Webcam + Depth Map (YOLO26n-depth)", combined)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-
-
-# ==============================================================
-# 5. Training pipeline (pseudo-depth / synthetic depth)
-# ==============================================================
-
-def make_synthetic_depth_from_image(image_bgr):
-    """Membuat label kedalaman sintetis dari citra RGB sebagai fallback saat dataset depth tidak tersedia."""
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    normalized = gray.astype(np.float32) / 255.0
-
-    center_bias = 1.0 - np.abs(np.linspace(-1, 1, normalized.shape[1], dtype=np.float32))
-    center_bias = np.tile(center_bias.reshape(1, -1), (normalized.shape[0], 1))
-    synthetic = normalized * 0.7 + center_bias * 0.3
-    synthetic = np.clip(synthetic, 0.0, 1.0)
-    return synthetic.astype(np.float32)
-
-
-def collect_training_files(image_dir, depth_dir=None):
-    valid_ext = ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
-    image_files = []
-    for root, _, files in os.walk(image_dir):
-        for file in files:
-            if file.lower().endswith(valid_ext):
-                image_files.append(os.path.join(root, file))
-    image_files = sorted(image_files)
-
-    if depth_dir is None:
-        return image_files, None
-
-    depth_files = []
-    for root, _, files in os.walk(depth_dir):
-        for file in files:
-            if file.lower().endswith(valid_ext):
-                depth_files.append(os.path.join(root, file))
-    depth_files = sorted(depth_files)
-    return image_files, depth_files
-
-
 class NYUDepthV2Dataset:
     def __init__(self, mat_path, indices=None, image_size=(320, 240)):
         self.mat_path = mat_path
@@ -503,125 +331,32 @@ def train_nyu_depth_model(mat_path, epochs=5, learning_rate=1e-4, save_path='dat
     return model
 
 
-def train_depth_model(image_dir, depth_dir=None, epochs=2, batch_size=1, learning_rate=1e-3, save_path='yolo26n_depth_trained.pt'):
-    """Melatih model depth dengan label pseudo-depth jika dataset depth tidak ada."""
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = YOLO26nDepth(width_mult=0.25, depth_mult=0.50).to(device)
-    model.train()
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    criterion = nn.MSELoss()
-
-    image_files, depth_files = collect_training_files(image_dir, depth_dir)
-
-    if len(image_files) == 0:
-        print("Tidak ada file gambar yang ditemukan di folder input.")
-        return model
-
-    if depth_files is not None and len(depth_files) != len(image_files):
-        print(f"Jumlah file depth ({len(depth_files)}) tidak sama dengan gambar ({len(image_files)}). Akan menggunakan pseudo-depth otomatis.")
-        depth_files = None
-
-    print(f"Memulai training depth pada {len(image_files)} gambar dengan {epochs} epoch.")
-    print(f"Device aktif: {device}")
-
-    for epoch in range(epochs):
-        running_loss = 0.0
-        count = 0
-
-        for idx in range(0, len(image_files), batch_size):
-            batch_paths = image_files[idx:idx + batch_size]
-            batch_images = []
-            batch_targets = []
-
-            for path in batch_paths:
-                img_bgr = cv2.imread(path, cv2.IMREAD_COLOR)
-                if img_bgr is None:
-                    continue
-
-                img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-                img_tensor = torch.from_numpy(img_rgb.transpose(2, 0, 1)).float() / 255.0
-                img_tensor = img_tensor.unsqueeze(0).to(device)
-                batch_images.append(img_tensor)
-
-                if depth_files is not None:
-                    depth_path = depth_files[image_files.index(path)] if path in image_files else None
-                    if depth_path is not None:
-                        depth_bgr = cv2.imread(depth_path, cv2.IMREAD_GRAYSCALE)
-                        if depth_bgr is not None:
-                            depth_map = depth_bgr.astype(np.float32) / 255.0
-                        else:
-                            depth_map = make_synthetic_depth_from_image(img_bgr)
-                    else:
-                        depth_map = make_synthetic_depth_from_image(img_bgr)
-                else:
-                    depth_map = make_synthetic_depth_from_image(img_bgr)
-
-                target = torch.from_numpy(depth_map).unsqueeze(0).unsqueeze(0).float().to(device)
-                batch_targets.append(target)
-
-            if len(batch_images) == 0:
-                continue
-
-            x = torch.cat(batch_images, dim=0)
-            y = torch.cat(batch_targets, dim=0)
-
-            optimizer.zero_grad()
-            output = model(x)
-            pred_depth = output['depth']
-            loss = criterion(pred_depth, y)
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-            count += 1
-
-        avg_loss = running_loss / max(1, count)
-        print(f"Epoch [{epoch + 1}/{epochs}] - Loss: {avg_loss:.6f}")
-
-    torch.save(model.state_dict(), save_path)
-    print(f"Model berhasil dilatih dan disimpan ke: {save_path}")
-    return model
-
-
 # ==============================================================
 # 6. CLI runner
 # ==============================================================
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='YOLO26n-depth training + webcam demo')
-    parser.add_argument('--mode', type=str, choices=['camera', 'train', 'train_nyu', 'verify', 'image'], default='camera')
-    parser.add_argument('--image-dir', type=str, default='')
-    parser.add_argument('--depth-dir', type=str, default='')
-    parser.add_argument('--epochs', type=int, default=2)
-    parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--save-path', type=str, default='yolo26n_depth_trained.pt')
-    parser.add_argument('--weights', type=str, default='data/yolo26n_depth_trained.pt')
-    parser.add_argument('--image-path', type=str, default='')
-    parser.add_argument('--nyu-path', type=str, default='data/nyu_depth_v2_labeled.mat')
-    parser.add_argument('--max-samples', type=int, default=0)
-    parser.add_argument('--input-width', type=int, default=320)
-    parser.add_argument('--input-height', type=int, default=240)
+    parser = argparse.ArgumentParser(
+        description="Verify or train the YOLO26n-Depth architecture on NYU."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("verify", "train_nyu"),
+        default="verify",
+    )
+    parser.add_argument("--nyu-path", default="data/nyu_depth_v2_labeled.mat")
+    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--save-path", default="data/yolo26n_depth_nyu.pt")
+    parser.add_argument("--max-samples", type=int, default=0)
+    parser.add_argument("--input-width", type=int, default=320)
+    parser.add_argument("--input-height", type=int, default=240)
     args = parser.parse_args()
 
-    if args.mode == 'train':
-        if not args.image_dir:
-            print("Untuk mode train, gunakan --image-dir <folder_gambar>.")
-            print("Contoh: python arsitektur_yolo_depth.py --mode train --image-dir data/train")
-            raise SystemExit(1)
-        train_depth_model(
-            image_dir=args.image_dir,
-            depth_dir=args.depth_dir if args.depth_dir else None,
-            epochs=args.epochs,
-            batch_size=1,
-            learning_rate=args.lr,
-            save_path=args.save_path,
-        )
-    elif args.mode == 'train_nyu':
+    if args.mode == "train_nyu":
         if not os.path.exists(args.nyu_path):
-            print(f'File NYU tidak ditemukan: {args.nyu_path}')
-            raise SystemExit(1)
+            parser.error(f"File NYU tidak ditemukan: {args.nyu_path}")
         train_nyu_depth_model(
             mat_path=args.nyu_path,
             epochs=args.epochs,
@@ -630,13 +365,7 @@ if __name__ == "__main__":
             max_samples=args.max_samples,
             image_size=(args.input_width, args.input_height),
         )
-    elif args.mode == 'image':
-        image_path = args.image_path or find_first_image_path(args.image_dir or '')
-        if not image_path:
-            print("Mode image membutuhkan --image-path <gambar> atau folder gambar yang valid.")
-            raise SystemExit(1)
-        run_image_inference(image_path=image_path, weights_path=args.weights)
-    elif args.mode == 'verify':
+    else:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = YOLO26nDepth(num_classes=80, width_mult=0.25, depth_mult=0.50).to(device)
         model.eval()
@@ -657,5 +386,3 @@ if __name__ == "__main__":
         print(f'Device               : {device}')
         print(f'Param count          : {sum(p.numel() for p in model.parameters()):,}')
         print('Status               : RUNNING OK')
-    else:
-        run_live_camera(weights_path=args.weights)
