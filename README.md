@@ -46,6 +46,10 @@ berfungsi, contohnya:
 .\.venv\Scripts\python.exe -m unittest discover
 ```
 
+Di workspace ini, hook Git lokal mencoba menjalankan `git push origin main`
+setelah setiap commit; jika push gagal, commit tetap berhasil dan hook memberi
+peringatan.
+
 ## Dataset NYU Depth V2
 
 Dataset NYU Depth V2 (`.mat`, sekitar 2.8 GiB) **tidak disertakan di repository**.
