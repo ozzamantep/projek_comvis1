@@ -2,8 +2,9 @@
 
 Prototipe Android Native (Kotlin) untuk menggabungkan detector COCO TFLite dan
 model depth lokal TFLite. Frame kamera diproses pada perangkat; aplikasi
-menampilkan bbox, kelas, estimasi jarak dari median depth patch di tengah bbox,
-Inferno depth map, dan pengukuran titik melalui tap.
+menampilkan bbox dan kelas pada kamera maupun peta depth Inferno berdampingan.
+Jarak per objek diambil sebagai median area bagian tengah bbox; tap-to-measure
+tetap tersedia di tampilan kamera.
 
 ## Isi proyek
 

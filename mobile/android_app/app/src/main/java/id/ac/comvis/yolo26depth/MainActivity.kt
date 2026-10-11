@@ -46,7 +46,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var tapPoint: Pair<Float, Float>? = null
     private var tapDistanceMeters: Float? = null
     private var showDepthOverlay = false
-    private var sideBySide = false
+    private var sideBySide = true
     @Volatile private var confidenceThreshold = 0.5f
     @Volatile private var selectedClasses: Set<String> = emptySet()
     @Volatile private var calibrationFactor = 1f
@@ -167,7 +167,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             ),
         )
         depthMapView = DepthMapView(this)
-        depthMapView.visibility = View.GONE
+        depthMapView.visibility = View.VISIBLE
         frameRow.addView(
             previewHost,
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
@@ -332,6 +332,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         val sideBySideSwitch = Switch(this).apply {
             text = "Side-by-side"
             setTextColor(0xffffffff.toInt())
+            isChecked = sideBySide
             setOnCheckedChangeListener { _, checked ->
                 sideBySide = checked
                 depthMapView.visibility = if (checked) View.VISIBLE else View.GONE
@@ -355,6 +356,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             ),
         )
         setContentView(root)
+        updateDisplayWeights()
 
         overlayView.onMeasureTap = { x, y ->
             val result = latestResult
@@ -514,7 +516,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
             tapPoint,
             tapDistanceMeters,
         )
-        depthMapView.setDepthBitmap(if (sideBySide) latestDepthBitmap else null)
+        depthMapView.update(
+            if (sideBySide) latestResult else null,
+            if (sideBySide) latestDepthBitmap else null,
+        )
     }
 
     private fun parseClasses(value: String): Set<String> =

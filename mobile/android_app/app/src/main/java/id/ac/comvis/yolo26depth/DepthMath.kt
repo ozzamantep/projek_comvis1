@@ -24,6 +24,37 @@ class DepthEma(private val alpha: Float) {
 }
 
 object DepthMath {
+    fun sampleMedianInBox(
+        depthMeters: FloatArray,
+        width: Int,
+        height: Int,
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float,
+    ): Float? {
+        require(depthMeters.size == width * height)
+        if (width <= 0 || height <= 0 || right <= left || bottom <= top) return null
+
+        val insetX = (right - left) * 0.2f
+        val insetY = (bottom - top) * 0.2f
+        val startX = (left + insetX).toInt().coerceIn(0, width - 1)
+        val endX = kotlin.math.ceil(right - insetX).toInt().coerceIn(startX + 1, width)
+        val startY = (top + insetY).toInt().coerceIn(0, height - 1)
+        val endY = kotlin.math.ceil(bottom - insetY).toInt().coerceIn(startY + 1, height)
+        val values = ArrayList<Float>((endX - startX) * (endY - startY))
+
+        for (py in startY until endY) {
+            for (px in startX until endX) {
+                val value = depthMeters[py * width + px]
+                if (value.isFinite() && value > 0f) values += value
+            }
+        }
+        if (values.isEmpty()) return null
+        values.sort()
+        return values[values.size / 2]
+    }
+
     fun sampleMedian(
         depthMeters: FloatArray,
         width: Int,

@@ -107,15 +107,16 @@ class InferenceEngine(
         )
 
         val detections = decodeResult.boxes.map { box ->
-            val depthX = boxCenterX(box) * config.depthInputWidth / bitmap.width
-            val depthY = boxCenterY(box) * config.depthInputHeight / bitmap.height
-            val sampled = DepthMath.sampleMedian(
+            val scaleX = config.depthInputWidth / bitmap.width.toFloat()
+            val scaleY = config.depthInputHeight / bitmap.height.toFloat()
+            val sampled = DepthMath.sampleMedianInBox(
                 metricDepth,
                 config.depthInputWidth,
                 config.depthInputHeight,
-                depthX,
-                depthY,
-                config.depthPatchSize,
+                box.left * scaleX,
+                box.top * scaleY,
+                box.right * scaleX,
+                box.bottom * scaleY,
             )
             Detection(
                 classId = box.classId,
@@ -162,10 +163,6 @@ class InferenceEngine(
             config.depthPatchSize,
         )?.times(calibrationFactor)
     }
-
-    private fun boxCenterX(box: ModelBox): Float = (box.left + box.right) / 2f
-
-    private fun boxCenterY(box: ModelBox): Float = (box.top + box.bottom) / 2f
 
     private fun runModel(
         runtime: RuntimeModel,
