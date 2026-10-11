@@ -46,11 +46,13 @@ def require_file(path: Path, description: str) -> None:
 
 
 def load_depth_model(weights_path: Path, device: torch.device) -> nn.Module:
-    from penting.arsitektur_yolo_depth import YOLO26nDepth
+    from penting.arsitektur_yolo_depth import (
+        YOLO26nDepth,
+        load_depth_checkpoint,
+    )
 
     model = YOLO26nDepth(width_mult=0.25, depth_mult=0.50).to(device)
-    state_dict = torch.load(weights_path, map_location=device, weights_only=True)
-    model.load_state_dict(state_dict)
+    load_depth_checkpoint(model, weights_path, device)
     model.eval()
     return model
 

@@ -11,7 +11,7 @@ import numpy as np
 import torch
 
 if __package__:
-    from .arsitektur_yolo_depth import YOLO26nDepth
+    from .arsitektur_yolo_depth import YOLO26nDepth, load_depth_checkpoint
     from .depth_utils import (
         DepthEMASmoother,
         get_depth_at_point,
@@ -22,7 +22,7 @@ if __package__:
         raw_depth_to_meters,
     )
 else:
-    from arsitektur_yolo_depth import YOLO26nDepth
+    from arsitektur_yolo_depth import YOLO26nDepth, load_depth_checkpoint
     from depth_utils import (
         DepthEMASmoother,
         get_depth_at_point,
@@ -41,10 +41,7 @@ DEPTH_INPUT_HEIGHT = 240
 def load_depth_model(weights_path: str, device: torch.device) -> YOLO26nDepth:
     """Load the local YOLO26nDepth state dict without unpickling model objects."""
     model = YOLO26nDepth(width_mult=0.25, depth_mult=0.50).to(device)
-    state_dict = torch.load(
-        weights_path, map_location=device, weights_only=True
-    )
-    model.load_state_dict(state_dict)
+    load_depth_checkpoint(model, weights_path, device)
     model.eval()
     return model
 

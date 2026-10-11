@@ -214,17 +214,36 @@ class YOLO26nDepth(nn.Module):
         }
 
 
-def load_model_with_weights(weights_path='data/yolo26n_depth_trained.pt'):
+def load_depth_checkpoint(
+    model: nn.Module,
+    weights_path: str | os.PathLike[str],
+    device: torch.device,
+) -> None:
+    """Load only weights compatible with the active YOLO26n-Depth architecture."""
+    if not os.path.isfile(weights_path):
+        raise FileNotFoundError(f"Depth checkpoint not found: {weights_path}")
+
+    state_dict = torch.load(weights_path, map_location=device, weights_only=True)
+    if not isinstance(state_dict, dict):
+        raise TypeError(
+            f"Expected a state_dict checkpoint at {weights_path}; "
+            f"got {type(state_dict).__name__}."
+        )
+    try:
+        model.load_state_dict(state_dict)
+    except RuntimeError as error:
+        raise ValueError(
+            f"Checkpoint '{weights_path}' is incompatible with YOLO26nDepth "
+            "defined in arsitektur_yolo_depth.py (the architecture in the PDF). "
+            "Use weights trained with that model; do not bypass this check."
+        ) from error
+
+
+def load_model_with_weights(weights_path='data/yolo26n_depth_nyu_full.pt'):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = YOLO26nDepth(width_mult=0.25, depth_mult=0.50).to(device)
-
-    if os.path.exists(weights_path):
-        state_dict = torch.load(weights_path, map_location=device, weights_only=False)
-        model.load_state_dict(state_dict)
-        print(f"Loaded weights from: {weights_path}")
-    else:
-        print(f"Weights not found at: {weights_path}. Running with random initialization.")
-
+    load_depth_checkpoint(model, weights_path, device)
+    print(f"Loaded weights from: {weights_path}")
     model.eval()
     return model, device
 

@@ -4,7 +4,26 @@ Proyek tugas Computer Vision ini mengembangkan pipeline berbasis YOLO26n-Depth
 untuk estimasi kedalaman dan jarak metrik (meter/cm), dengan sasaran porting
 dan inferensi pada perangkat mobile. Pipeline desktop saat ini memisahkan
 deteksi objek COCO (Ultralytics) dari prediksi depth lokal yang dilatih pada
-NYU Depth V2.
+NYU Depth V2. Backbone, neck FPN+PAN, detection head multi-skala, dan cabang
+DepthHead mengikuti arsitektur pada diagram laporan PDF.
+
+`data/depthnet_best.pt` tidak memakai arsitektur `YOLO26nDepth` pada laporan:
+nama kunci tensor checkpoint tersebut tidak cocok dengan model proyek. Karena
+itu checkpoint tersebut tidak dipasang ke model dan loader akan menolak bobot
+yang arsitekturnya berbeda. Untuk mempertahankan arsitektur PDF, latih ulang
+dengan trainer proyek dan simpan hasilnya ke file terpisah:
+
+```powershell
+.\.venv\Scripts\python.exe penting\train_nyu_colab.py `
+  --nyu-path data\nyu_depth_v2_labeled.mat `
+  --output data\yolo26n_depth_pdf_best.pt `
+  --loss-plot data\yolo26n_depth_pdf_loss.png
+```
+
+Setelah training, berikan `data\yolo26n_depth_pdf_best.pt` lewat opsi
+`--depth-weights` pada runner kamera atau `--weights` pada evaluator/diagnostik.
+Checkpoint PDF lama yang kompatibel tetap tersedia; training baru tidak
+menimpa file tersebut.
 
 Konversi depth lokal saat ini menggunakan asumsi sementara
 `raw_depth × 10 meter`; angka tersebut bukan jaminan akurasi jarak kamera tanpa

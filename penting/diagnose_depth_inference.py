@@ -13,9 +13,9 @@ import numpy as np
 import torch
 
 if __package__:
-    from .arsitektur_yolo_depth import YOLO26nDepth
+    from .arsitektur_yolo_depth import YOLO26nDepth, load_depth_checkpoint
 else:
-    from arsitektur_yolo_depth import YOLO26nDepth
+    from arsitektur_yolo_depth import YOLO26nDepth, load_depth_checkpoint
 
 
 INPUT_WIDTH = 320
@@ -183,8 +183,7 @@ def run_diagnostic(args: argparse.Namespace) -> dict[str, Any]:
         else ("cuda" if torch.cuda.is_available() else "cpu")
     )
     model = YOLO26nDepth(width_mult=0.25, depth_mult=0.50).to(device)
-    state_dict = torch.load(args.weights, map_location=device, weights_only=True)
-    model.load_state_dict(state_dict)
+    load_depth_checkpoint(model, args.weights, device)
     model.eval()
 
     summary: dict[str, Any] = {
