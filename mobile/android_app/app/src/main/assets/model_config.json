@@ -1,0 +1,22 @@
+{
+  "depth_model": "depth_model.tflite",
+  "depth_input_width": 320,
+  "depth_input_height": 240,
+  "depth_input_layout": "NHWC",
+  "depth_input_dtype": "FLOAT32",
+  "depth_output_layout": "NHWC",
+  "depth_output_channels": 1,
+  "depth_scale_m": 10.0,
+  "calibration_factor": 1.0,
+  "depth_patch_size": 5,
+  "ema_alpha": 0.35,
+  "detector_model": "detector_model.tflite",
+  "detector_input_size": 640,
+  "detector_input_layout": "NCHW",
+  "detector_output_channels": 84,
+  "detector_candidates": 8400,
+  "detector_class_count": 80,
+  "detector_confidence": 0.5,
+  "detector_iou_threshold": 0.45,
+  "detector_decode_verified": false
+}
