@@ -16,7 +16,7 @@
   "detector_output_channels": 84,
   "detector_candidates": 8400,
   "detector_class_count": 80,
-  "detector_confidence": 0.5,
+  "detector_confidence": 0.25,
   "detector_iou_threshold": 0.45,
   "detector_decode_verified": false
 }

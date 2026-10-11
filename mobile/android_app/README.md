@@ -34,6 +34,35 @@ Inferno depth map, dan pengukuran titik melalui tap.
 - Implementasi mencoba LiteRT GPU delegate dan menyediakan fallback CPU/XNNPACK
   bila inisialisasi GPU gagal. Performa dan kompatibilitas perlu diuji di HP.
 
+## Hubungan dengan arsitektur baseline
+
+Arsitektur **YOLO26n-Depth pada checkpoint depth tidak diubah** oleh aplikasi ini:
+model depth yang sudah diekspor tetap menerima gambar dan menghasilkan peta
+depth. Baseline backbone, neck FPN/PAN, dan `DepthHead` tetap berada dalam
+grafik model yang menjadi sumber checkpoint depth.
+
+Perubahan yang ditambahkan berada pada **pipeline deployment**, bukan mengganti
+blok internal baseline:
+
+```text
+frame kamera
+  ├─> detector COCO TFLite (model kedua) ─> bbox + kelas
+  └─> YOLO26n-Depth TFLite ─> raw depth × 10 ─> median patch di bbox ─> label jarak
+```
+
+Model detector dipisah karena model depth baseline tidak dilatih dengan anotasi
+bbox COCO. Jadi, dibanding diagram satu model di laporan, aplikasi menjalankan
+dua inferensi paralel-sekuensial pada frame yang sama: ini tambahan arsitektur
+pipeline dengan biaya latency dan ukuran model, **bukan perubahan backbone,
+neck, atau `DepthHead`**. Tidak ada CBAM atau gradient-loss fine-tuning di
+checkpoints/aplikasi saat ini. Jika kelak CBAM ditambahkan ke `DepthHead`, itu
+perubahan arsitektur model dan perlu retraining serta ekspor ulang.
+
+Skala `raw × 10 m` adalah asumsi sementara dari target training, bukan jaminan
+akurasi pengukuran dunia nyata. NYU indoor dan kamera/objek tangan pada jarak
+dekat dapat berbeda domain; faktor skala global saja tidak mengoreksi kesalahan
+relatif/struktur depth.
+
 ## Build dan jalankan
 
 1. Buka folder `mobile/android_app/` di Android Studio.

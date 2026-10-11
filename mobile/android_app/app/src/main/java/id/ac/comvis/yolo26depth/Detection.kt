@@ -22,6 +22,14 @@ data class FrameResult(
     val inferenceLatencyMs: Float,
     val fps: Float,
     val runtimeLabel: String,
+    val detectorMaxScore: Float,
+    val detectorCandidatesAboveThreshold: Int,
+)
+
+data class DetectionDecodeResult(
+    val boxes: List<ModelBox>,
+    val maxScore: Float,
+    val candidatesAboveThreshold: Int,
 )
 
 data class LetterboxTransform(

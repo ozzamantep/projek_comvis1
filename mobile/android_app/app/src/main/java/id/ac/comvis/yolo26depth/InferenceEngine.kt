@@ -83,7 +83,7 @@ class InferenceEngine(
         val detectorLatencyMs =
             (SystemClock.elapsedRealtimeNanos() - detectorStart) / 1_000_000f
 
-        val boxes = YoloPostprocessor.decode(
+        val decodeResult = YoloPostprocessor.decode(
             output = detectorOutput,
             config = config,
             transform = letterbox,
@@ -106,7 +106,7 @@ class InferenceEngine(
             },
         )
 
-        val detections = boxes.map { box ->
+        val detections = decodeResult.boxes.map { box ->
             val depthX = boxCenterX(box) * config.depthInputWidth / bitmap.width
             val depthY = boxCenterY(box) * config.depthInputHeight / bitmap.height
             val sampled = DepthMath.sampleMedian(
@@ -140,6 +140,8 @@ class InferenceEngine(
             inferenceLatencyMs = detectorLatencyMs + depthLatencyMs,
             fps = fps,
             runtimeLabel = runtimeLabel,
+            detectorMaxScore = decodeResult.maxScore,
+            detectorCandidatesAboveThreshold = decodeResult.candidatesAboveThreshold,
         )
     }
 

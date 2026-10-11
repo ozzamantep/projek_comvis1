@@ -26,13 +26,15 @@ object YoloPostprocessor {
         transform: LetterboxTransform,
         confidenceThreshold: Float,
         selectedClasses: Set<String>,
-    ): List<ModelBox> {
+    ): DetectionDecodeResult {
         val candidates = config.detectorCandidates
         val channels = config.detectorOutputChannels
         require(output.size == channels * candidates) {
             "Detector output length ${output.size}; expected ${channels * candidates}."
         }
         val boxes = ArrayList<ModelBox>()
+        var maxScore = 0f
+        var candidatesAboveThreshold = 0
         for (index in 0 until candidates) {
             var classId = -1
             var score = 0f
@@ -43,7 +45,9 @@ object YoloPostprocessor {
                     score = candidateScore
                 }
             }
+            maxScore = maxOf(maxScore, score)
             if (classId < 0 || score < confidenceThreshold) continue
+            candidatesAboveThreshold++
             if (selectedClasses.isNotEmpty()) {
                 val label = CocoLabels.names.getOrNull(classId)?.lowercase() ?: continue
                 if (label !in selectedClasses) continue
@@ -78,7 +82,11 @@ object YoloPostprocessor {
                 if (kept.size >= MAX_DETECTIONS) break
             }
         }
-        return kept
+        return DetectionDecodeResult(
+            boxes = kept,
+            maxScore = maxScore,
+            candidatesAboveThreshold = candidatesAboveThreshold,
+        )
     }
 
     private fun intersectionOverUnion(a: ModelBox, b: ModelBox): Float {

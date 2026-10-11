@@ -216,10 +216,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
         val confidenceLabel = text("Confidence: ${confidenceThreshold.format(2)}", 12f)
         val confidenceSeekBar = SeekBar(this).apply {
             max = 100
-            progress = (confidenceThreshold * 100).toInt()
+            progress = (confidenceThreshold / MAX_CONFIDENCE * 100).toInt()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    confidenceThreshold = progress / 100f
+                    confidenceThreshold = progress / 100f * MAX_CONFIDENCE
                     confidenceLabel.text = "Confidence: ${confidenceThreshold.format(2)}"
                 }
 
@@ -229,6 +229,15 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
         controls.addView(confidenceLabel)
         controls.addView(confidenceSeekBar)
+        controls.addView(Button(this).apply {
+            text = "Reset confidence ke 0.25"
+            setOnClickListener {
+                confidenceThreshold = DEFAULT_CONFIDENCE
+                confidenceSeekBar.progress =
+                    (DEFAULT_CONFIDENCE / MAX_CONFIDENCE * 100).toInt()
+                confidenceLabel.text = "Confidence: ${confidenceThreshold.format(2)}"
+            }
+        })
 
         val filterRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -252,10 +261,24 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 }
             }
         }
-        filterRow.addView(
-            classFilter,
-            LinearLayout.LayoutParams(0, dp(48), 1f),
-        )
+        filterRow.addView(classFilter, LinearLayout.LayoutParams(0, dp(48), 1f))
+        filterRow.addView(Button(this).apply {
+            text = "Pakai"
+            setOnClickListener {
+                selectedClasses = parseClasses(classFilter.text.toString())
+                statusView.text = classFilterStatus(selectedClasses)
+                classFilter.clearFocus()
+            }
+        })
+        filterRow.addView(Button(this).apply {
+            text = "Semua"
+            setOnClickListener {
+                classFilter.text.clear()
+                selectedClasses = emptySet()
+                statusView.text = classFilterStatus(selectedClasses)
+                classFilter.clearFocus()
+            }
+        })
         controls.addView(filterRow)
 
         val calibrationRow = LinearLayout(this).apply {
@@ -471,10 +494,12 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
         statusView.text = String.format(
             Locale.US,
-            "%.1f FPS · inferensi %.1f ms · %d objek · %s · %s",
+            "%.1f FPS · %.1f ms · %d objek · max score %.2f · %d > conf · %s · %s",
             result.fps,
             result.inferenceLatencyMs,
             result.detections.size,
+            result.detectorMaxScore,
+            result.detectorCandidatesAboveThreshold,
             result.runtimeLabel,
             decodeNote,
         )
@@ -539,5 +564,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     companion object {
         private const val TAG = "Yolo26Depth"
+        private const val DEFAULT_CONFIDENCE = 0.25f
+        private const val MAX_CONFIDENCE = 0.80f
     }
 }
