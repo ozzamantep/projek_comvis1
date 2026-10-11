@@ -1,0 +1,81 @@
+{
+  "catatan": "Verifikasi memakai input acak (seed 42), bukan gambar NYU. Latency = CPU Colab, bukan HP.",
+  "versions": {
+    "pytorch": "2.13.0+cu130",
+    "onnxruntime": "1.20.1",
+    "tensorflow": "2.16.2",
+    "onnx2tf": "1.28.6"
+  },
+  "max_abs_errors": [
+    {
+      "input": 0,
+      "pytorch_vs_onnx_max_abs": 3.8743019104003906e-07,
+      "pytorch_vs_tflite_max_abs": 0.00026467442512512207,
+      "onnx_vs_tflite_max_abs": 0.00026473402976989746
+    },
+    {
+      "input": 1,
+      "pytorch_vs_onnx_max_abs": 3.5762786865234375e-07,
+      "pytorch_vs_tflite_max_abs": 0.00023639202117919922,
+      "onnx_vs_tflite_max_abs": 0.00023633241653442383
+    },
+    {
+      "input": 2,
+      "pytorch_vs_onnx_max_abs": 4.023313522338867e-07,
+      "pytorch_vs_tflite_max_abs": 0.00019878149032592773,
+      "onnx_vs_tflite_max_abs": 0.00019878149032592773
+    },
+    {
+      "input": 3,
+      "pytorch_vs_onnx_max_abs": 4.172325134277344e-07,
+      "pytorch_vs_tflite_max_abs": 0.00038632750511169434,
+      "onnx_vs_tflite_max_abs": 0.0003860890865325928
+    },
+    {
+      "input": 4,
+      "pytorch_vs_onnx_max_abs": 3.5762786865234375e-07,
+      "pytorch_vs_tflite_max_abs": 0.0005965828895568848,
+      "onnx_vs_tflite_max_abs": 0.0005967915058135986
+    }
+  ],
+  "latency": {
+    "pytorch_cpu": {
+      "mean_ms": 274.2941520000045,
+      "median_ms": 275.3256560000068,
+      "min_ms": 260.7305349999933,
+      "max_ms": 287.499978000028
+    },
+    "onnxruntime_cpu": {
+      "mean_ms": 185.49200909998262,
+      "median_ms": 183.07463050001616,
+      "min_ms": 181.02961499994308,
+      "max_ms": 196.32366099995124
+    },
+    "tflite_fp16_cpu": {
+      "mean_ms": 299.0762782999923,
+      "median_ms": 297.32846500002097,
+      "min_ms": 289.2147689999547,
+      "max_ms": 315.50120899999
+    }
+  },
+  "io": {
+    "tflite_input_shape": [
+      1,
+      240,
+      320,
+      3
+    ],
+    "tflite_input_dtype": "<class 'numpy.float32'>",
+    "tflite_output_shape": [
+      1,
+      240,
+      320,
+      1
+    ],
+    "tflite_output_dtype": "<class 'numpy.float32'>"
+  },
+  "files_bytes": {
+    "depth_onnx": 8850839,
+    "depth_tflite_fp16": 4456288
+  }
+}
