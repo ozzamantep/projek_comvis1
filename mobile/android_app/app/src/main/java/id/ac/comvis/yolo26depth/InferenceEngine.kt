@@ -191,21 +191,24 @@ class InferenceEngine(
         }
 
         var gpuDelegate: GpuDelegate? = null
+        var gpuInterpreter: Interpreter? = null
         try {
             gpuDelegate = GpuDelegate()
             val gpuOptions = Interpreter.Options()
                 .addDelegate(gpuDelegate)
                 .setNumThreads(4)
-            val interpreter = Interpreter(modelBuffer, gpuOptions)
-            interpreter.allocateTensors()
-            return RuntimeModel(interpreter, gpuDelegate, "GPU")
+            val initializedInterpreter = Interpreter(modelBuffer, gpuOptions)
+            gpuInterpreter = initializedInterpreter
+            initializedInterpreter.allocateTensors()
+            return RuntimeModel(initializedInterpreter, gpuDelegate, "GPU")
         } catch (gpuError: Exception) {
+            gpuInterpreter?.close()
             gpuDelegate?.close()
-            android.util.Log.w(
-                TAG,
-                "GPU delegate unavailable for $assetName; retrying on CPU/XNNPACK.",
-                gpuError,
-            )
+            logGpuFallback(assetName, gpuError)
+        } catch (gpuError: LinkageError) {
+            gpuInterpreter?.close()
+            gpuDelegate?.close()
+            logGpuFallback(assetName, gpuError)
         }
 
         val cpuOptions = Interpreter.Options()
@@ -214,6 +217,14 @@ class InferenceEngine(
         val cpuInterpreter = Interpreter(modelBuffer, cpuOptions)
         cpuInterpreter.allocateTensors()
         return RuntimeModel(cpuInterpreter, null, "CPU/XNNPACK")
+    }
+
+    private fun logGpuFallback(assetName: String, error: Throwable) {
+        android.util.Log.w(
+            TAG,
+            "GPU delegate unavailable for $assetName; retrying on CPU/XNNPACK.",
+            error,
+        )
     }
 
     override fun close() {

@@ -37,13 +37,13 @@ Inferno depth map, dan pengukuran titik melalui tap.
 ## Build dan jalankan
 
 1. Buka folder `mobile/android_app/` di Android Studio.
-2. Gunakan JDK 17, Gradle 8.9 atau lebih baru, dan Android SDK platform 35,
-   lalu jalankan Gradle Sync. Jika memakai Android Studio, pilih instalasi
-   Gradle lokal karena Gradle wrapper belum disertakan.
+2. Gunakan JDK 17 dan Android SDK platform 35, lalu jalankan Gradle Sync.
 3. Pilih perangkat Android dengan kamera (minSdk 26), lalu jalankan konfigurasi
    `app`. Berikan izin kamera saat diminta.
-4. Untuk APK debug, jalankan task Gradle `:app:assembleDebug`; output umumnya
+4. Untuk APK debug dari terminal Windows, jalankan
+   `.\gradlew.bat :app:assembleDebug` dari folder proyek ini; output umumnya
    berada di `app/build/outputs/apk/debug/app-debug.apk`.
 
-Gradle wrapper belum disertakan. APK, pemasangan ke perangkat, kompatibilitas
-operator LiteRT, FPS HP, dan akurasi decoder belum diverifikasi pada tahap ini.
+Build APK dan startup model sudah diverifikasi pada satu perangkat Xiaomi.
+Inferensi kamera setelah izin diberikan, kompatibilitas semua operator LiteRT,
+FPS HP, dan akurasi decoder belum diverifikasi pada tahap ini.
