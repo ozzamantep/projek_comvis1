@@ -3,6 +3,20 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val calibratedDepthModel = rootProject.projectDir
+    .resolve("../../data/yolo26n-depth-nyu-calibrated.tflite")
+val generatedModelAssets = layout.buildDirectory.dir("generated/calibratedDepthAssets")
+val syncCalibratedDepthModel = tasks.register<Copy>("syncCalibratedDepthModel") {
+    from(calibratedDepthModel)
+    into(generatedModelAssets)
+    doFirst {
+        require(calibratedDepthModel.isFile) {
+            "Depth model is missing: $calibratedDepthModel. " +
+                "Place yolo26n-depth-nyu-calibrated.tflite in the repository data folder."
+        }
+    }
+}
+
 android {
     namespace = "id.ac.comvis.yolo26depth"
     compileSdk = 35
@@ -14,6 +28,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+
+    sourceSets.getByName("main").assets.srcDir(generatedModelAssets)
 
     buildFeatures {
         buildConfig = false
@@ -27,6 +43,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(syncCalibratedDepthModel)
 }
 
 dependencies {

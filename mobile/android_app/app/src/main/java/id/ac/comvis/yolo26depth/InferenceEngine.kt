@@ -30,17 +30,23 @@ class InferenceEngine(
     init {
         val depthInput = depthModel.interpreter.getInputTensor(0).shape()
         val depthOutput = depthModel.interpreter.getOutputTensor(0).shape()
-        require(depthInput.contentEquals(
-            intArrayOf(1, config.depthInputHeight, config.depthInputWidth, 3),
-        )) {
-            "Depth input $depthInput, expected [1,${config.depthInputHeight}," +
-                "${config.depthInputWidth},3] NHWC."
+        val expectedDepthInput = if (config.depthInputLayout == "NCHW") {
+            intArrayOf(1, 3, config.depthInputHeight, config.depthInputWidth)
+        } else {
+            intArrayOf(1, config.depthInputHeight, config.depthInputWidth, 3)
         }
-        require(depthOutput.contentEquals(
-            intArrayOf(1, config.depthInputHeight, config.depthInputWidth, 1),
-        )) {
-            "Depth output $depthOutput, expected [1,${config.depthInputHeight}," +
-                "${config.depthInputWidth},1] NHWC."
+        require(depthInput.contentEquals(expectedDepthInput)) {
+            "Depth input ${depthInput.contentToString()}, expected " +
+                "${expectedDepthInput.contentToString()} ${config.depthInputLayout}."
+        }
+        val expectedDepthOutput = if (config.depthOutputLayout == "NCHW") {
+            intArrayOf(1, config.depthOutputChannels, config.depthInputHeight, config.depthInputWidth)
+        } else {
+            intArrayOf(1, config.depthInputHeight, config.depthInputWidth, config.depthOutputChannels)
+        }
+        require(depthOutput.contentEquals(expectedDepthOutput)) {
+            "Depth output ${depthOutput.contentToString()}, expected " +
+                "${expectedDepthOutput.contentToString()} ${config.depthOutputLayout}."
         }
 
         val detectorInput = detectorModel.interpreter.getInputTensor(0).shape()

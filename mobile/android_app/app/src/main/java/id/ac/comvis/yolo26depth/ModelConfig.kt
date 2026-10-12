@@ -27,7 +27,8 @@ data class ModelConfig(
 ) {
     init {
         require(depthInputWidth > 0 && depthInputHeight > 0)
-        require(depthInputLayout == "NHWC" && depthOutputLayout == "NHWC")
+        require(depthInputLayout in setOf("NHWC", "NCHW"))
+        require(depthOutputLayout in setOf("NHWC", "NCHW"))
         require(depthInputDtype == "FLOAT32" && depthOutputChannels == 1)
         require(depthScaleMeters > 0f && calibrationFactor > 0f)
         require(depthPatchSize > 0 && depthPatchSize % 2 == 1)

@@ -24,10 +24,23 @@ object ImagePreprocessor {
         )
         val buffer = ByteBuffer.allocateDirect(pixels.size * 3 * Float.SIZE_BYTES)
             .order(ByteOrder.nativeOrder())
-        for (pixel in pixels) {
-            buffer.putFloat(((pixel shr 16) and 0xff) / 255f)
-            buffer.putFloat(((pixel shr 8) and 0xff) / 255f)
-            buffer.putFloat((pixel and 0xff) / 255f)
+        if (config.depthInputLayout == "NCHW") {
+            for (channel in 0..2) {
+                for (pixel in pixels) {
+                    val value = when (channel) {
+                        0 -> (pixel shr 16) and 0xff
+                        1 -> (pixel shr 8) and 0xff
+                        else -> pixel and 0xff
+                    }
+                    buffer.putFloat(value / 255f)
+                }
+            }
+        } else {
+            for (pixel in pixels) {
+                buffer.putFloat(((pixel shr 16) and 0xff) / 255f)
+                buffer.putFloat(((pixel shr 8) and 0xff) / 255f)
+                buffer.putFloat((pixel and 0xff) / 255f)
+            }
         }
         buffer.rewind()
         if (resized !== bitmap) resized.recycle()

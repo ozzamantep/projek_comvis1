@@ -24,9 +24,12 @@ tetap tersedia di tampilan kamera.
 
 ## Kontrak model dan batasan
 
-- Depth: NHWC `[1,240,320,3]` float32 RGB `/255`; output NHWC
-  `[1,240,320,1]` float32. Nilai raw dikalikan 10 sebagai meter, sesuai asumsi
-  sementara proyek. Ini belum menjamin jarak metrik akurat di kamera lain.
+- Depth: NCHW `[1,3,640,640]` float32 RGB `/255`; output NCHW
+  `[1,1,640,640]` float32, sesuai tensor TFLite hasil ekspor checkpoint. Input
+  mempertahankan aspek frame dan memakai letterbox
+  berwarna 114; output depth langsung dalam meter dari head terkalibrasi, tanpa
+  faktor `×10`. Aplikasi membuang padding sebelum menyelaraskan depth dengan
+  frame kamera. Kalibrasi kamera tetap bisa diterapkan dari UI.
 - Detector: NCHW `[1,3,640,640]` float32; keluaran `[1,84,8400]`. Decoder dan
   NMS dalam aplikasi masih **belum diverifikasi** dengan gambar nyata terhadap
   keluaran Ultralytics di PC. Label peringatan tetap ditampilkan di aplikasi.
