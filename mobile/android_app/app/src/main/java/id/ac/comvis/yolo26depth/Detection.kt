@@ -8,7 +8,17 @@ data class Detection(
     val top: Float,
     val right: Float,
     val bottom: Float,
+    val rawDistanceMeters: Float?,
     val distanceMeters: Float?,
+    val rawCenterX: Float,
+    val rawCenterY: Float,
+    val rawWidth: Float,
+    val rawHeight: Float,
+)
+
+data class DepthMeasurement(
+    val modelMeters: Float,
+    val calibratedMeters: Float,
 )
 
 data class FrameResult(
@@ -24,12 +34,16 @@ data class FrameResult(
     val runtimeLabel: String,
     val detectorMaxScore: Float,
     val detectorCandidatesAboveThreshold: Int,
+    val detectorValidBeforeNms: Int,
+    val detectorCoordinatesNormalized: Boolean,
 )
 
 data class DetectionDecodeResult(
     val boxes: List<ModelBox>,
     val maxScore: Float,
     val candidatesAboveThreshold: Int,
+    val validBoxesBeforeNms: Int,
+    val coordinatesNormalized: Boolean,
 )
 
 data class LetterboxTransform(
@@ -43,6 +57,10 @@ data class LetterboxTransform(
 data class ModelBox(
     val classId: Int,
     val confidence: Float,
+    val rawCenterX: Float,
+    val rawCenterY: Float,
+    val rawWidth: Float,
+    val rawHeight: Float,
     val left: Float,
     val top: Float,
     val right: Float,

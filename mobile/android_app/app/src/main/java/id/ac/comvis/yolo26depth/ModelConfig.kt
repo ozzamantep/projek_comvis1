@@ -12,7 +12,6 @@ data class ModelConfig(
     val depthOutputLayout: String,
     val depthOutputChannels: Int,
     val depthScaleMeters: Float,
-    val calibrationFactor: Float,
     val depthPatchSize: Int,
     val emaAlpha: Float,
     val detectorModel: String,
@@ -30,7 +29,7 @@ data class ModelConfig(
         require(depthInputLayout in setOf("NHWC", "NCHW"))
         require(depthOutputLayout in setOf("NHWC", "NCHW"))
         require(depthInputDtype == "FLOAT32" && depthOutputChannels == 1)
-        require(depthScaleMeters > 0f && calibrationFactor > 0f)
+        require(depthScaleMeters > 0f)
         require(depthPatchSize > 0 && depthPatchSize % 2 == 1)
         require(emaAlpha > 0f && emaAlpha <= 1f)
         require(detectorInputLayout == "NCHW" && detectorInputSize > 0)
@@ -52,7 +51,6 @@ data class ModelConfig(
                 depthOutputLayout = json.getString("depth_output_layout"),
                 depthOutputChannels = json.getInt("depth_output_channels"),
                 depthScaleMeters = json.getDouble("depth_scale_m").toFloat(),
-                calibrationFactor = json.getDouble("calibration_factor").toFloat(),
                 depthPatchSize = json.getInt("depth_patch_size"),
                 emaAlpha = json.getDouble("ema_alpha").toFloat(),
                 detectorModel = json.getString("detector_model"),

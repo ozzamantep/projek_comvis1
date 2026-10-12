@@ -152,4 +152,17 @@ class DetectionOverlayView(context: Context) : View(context) {
         val top = (height - fittedHeight) / 2f
         return RectF(left, top, left + fittedWidth, top + fittedHeight)
     }
+
+    fun mapFrameBoxToView(detection: Detection): RectF? {
+        if (frameWidth <= 0 || frameHeight <= 0 || width <= 0 || height <= 0) return null
+        val imageRect = fittedImageRect()
+        val scaleX = imageRect.width() / frameWidth
+        val scaleY = imageRect.height() / frameHeight
+        return RectF(
+            imageRect.left + detection.left * scaleX,
+            imageRect.top + detection.top * scaleY,
+            imageRect.left + detection.right * scaleX,
+            imageRect.top + detection.bottom * scaleY,
+        )
+    }
 }

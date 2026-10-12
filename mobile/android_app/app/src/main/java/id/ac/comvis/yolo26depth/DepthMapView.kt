@@ -94,9 +94,11 @@ class DepthMapView(context: Context) : View(context) {
     }
 
     private fun fittedImageRect(source: Bitmap): RectF {
-        val scale = minOf(width.toFloat() / source.width, height.toFloat() / source.height)
-        val drawnWidth = source.width * scale
-        val drawnHeight = source.height * scale
+        val aspectWidth = if (frameWidth > 0) frameWidth else source.width
+        val aspectHeight = if (frameHeight > 0) frameHeight else source.height
+        val scale = minOf(width.toFloat() / aspectWidth, height.toFloat() / aspectHeight)
+        val drawnWidth = aspectWidth * scale
+        val drawnHeight = aspectHeight * scale
         val left = (width - drawnWidth) / 2f
         val top = (height - drawnHeight) / 2f
         return RectF(left, top, left + drawnWidth, top + drawnHeight)

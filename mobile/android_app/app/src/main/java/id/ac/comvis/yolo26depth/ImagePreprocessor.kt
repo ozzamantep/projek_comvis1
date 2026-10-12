@@ -3,17 +3,28 @@ package id.ac.comvis.yolo26depth
 import android.graphics.Bitmap
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.roundToInt
 
 object ImagePreprocessor {
-    fun depthInput(bitmap: Bitmap, config: ModelConfig): ByteBuffer {
-        val resized = Bitmap.createScaledBitmap(
-            bitmap,
+    fun depthInput(bitmap: Bitmap, config: ModelConfig): Pair<ByteBuffer, LetterboxTransform> {
+        val scale = minOf(
+            config.depthInputWidth.toFloat() / bitmap.width,
+            config.depthInputHeight.toFloat() / bitmap.height,
+        )
+        val scaledWidth = (bitmap.width * scale).roundToInt().coerceAtLeast(1)
+        val scaledHeight = (bitmap.height * scale).roundToInt().coerceAtLeast(1)
+        val padX = (config.depthInputWidth - scaledWidth) / 2
+        val padY = (config.depthInputHeight - scaledHeight) / 2
+        val scaled = Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
+        val letterboxed = Bitmap.createBitmap(
             config.depthInputWidth,
             config.depthInputHeight,
-            true,
+            Bitmap.Config.ARGB_8888,
         )
+        letterboxed.eraseColor(0xff727272.toInt())
+        android.graphics.Canvas(letterboxed).drawBitmap(scaled, padX.toFloat(), padY.toFloat(), null)
         val pixels = IntArray(config.depthInputWidth * config.depthInputHeight)
-        resized.getPixels(
+        letterboxed.getPixels(
             pixels,
             0,
             config.depthInputWidth,
@@ -43,14 +54,22 @@ object ImagePreprocessor {
             }
         }
         buffer.rewind()
-        if (resized !== bitmap) resized.recycle()
-        return buffer
+        if (scaled !== bitmap) scaled.recycle()
+        letterboxed.recycle()
+        return buffer to LetterboxTransform(
+            scale = scale,
+            padX = padX.toFloat(),
+            padY = padY.toFloat(),
+            originalWidth = bitmap.width,
+            originalHeight = bitmap.height,
+        )
     }
 
     fun detectorInput(
         bitmap: Bitmap,
         inputSize: Int,
     ): Pair<ByteBuffer, LetterboxTransform> {
+        // Use the same upright source, then preserve its aspect ratio with centered detector padding.
         val scale = minOf(
             inputSize.toFloat() / bitmap.width,
             inputSize.toFloat() / bitmap.height,

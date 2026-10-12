@@ -23,6 +23,8 @@ class InferenceEngine(
     private val depthModel = createInterpreter(config.depthModel)
     private val detectorModel = createInterpreter(config.detectorModel)
     private val ema = DepthEma(config.emaAlpha)
+    private val depthHistory = DepthFrameHistory(maxFrames = 7)
+    private val distanceSmoother = DetectionDistanceSmoother(maxFrames = 7)
 
     val runtimeLabel: String
         get() = "Depth ${depthModel.label} · Detektor ${detectorModel.label}"
@@ -54,7 +56,7 @@ class InferenceEngine(
         require(detectorInput.contentEquals(
             intArrayOf(1, 3, config.detectorInputSize, config.detectorInputSize),
         )) {
-            "Detector input $detectorInput does not match configured NCHW input."
+            "Detector input ${detectorInput.contentToString()} does not match configured NCHW input."
         }
         require(detectorOutput.contentEquals(
             intArrayOf(
@@ -63,7 +65,7 @@ class InferenceEngine(
                 config.detectorCandidates,
             ),
         )) {
-            "Detector output $detectorOutput does not match configured BCN output."
+            "Detector output ${detectorOutput.contentToString()} does not match configured BCN output."
         }
         require(depthModel.interpreter.getInputTensor(0).dataType().name == "FLOAT32")
         require(detectorModel.interpreter.getInputTensor(0).dataType().name == "FLOAT32")
@@ -73,7 +75,7 @@ class InferenceEngine(
         bitmap: Bitmap,
         confidenceThreshold: Float,
         selectedClasses: Set<String>,
-        calibrationFactor: Float,
+        calibration: LinearDepthCalibration,
         fps: Float,
     ): FrameResult {
         val (detectorInput, letterbox) = ImagePreprocessor.detectorInput(
@@ -97,7 +99,7 @@ class InferenceEngine(
             selectedClasses = selectedClasses,
         )
 
-        val depthInput = ImagePreprocessor.depthInput(bitmap, config)
+        val (depthInput, depthTransform) = ImagePreprocessor.depthInput(bitmap, config)
         val depthStart = SystemClock.elapsedRealtimeNanos()
         val depthRaw = runModel(
             depthModel,
@@ -106,19 +108,29 @@ class InferenceEngine(
         )
         val depthLatencyMs =
             (SystemClock.elapsedRealtimeNanos() - depthStart) / 1_000_000f
-        val metricDepth = ema.update(
-            FloatArray(depthRaw.size) { index ->
-                depthRaw[index] * config.depthScaleMeters
-            },
+        val metricDepthSquare = FloatArray(depthRaw.size) { index ->
+            depthRaw[index] * config.depthScaleMeters
+        }
+        val croppedDepth = DepthMath.removeLetterbox(
+            metricDepthSquare,
+            config.depthInputWidth,
+            config.depthInputHeight,
+            depthTransform,
         )
+        val croppedMetricDepth = ema.update(
+            croppedDepth.values,
+            croppedDepth.width,
+            croppedDepth.height,
+        )
+        depthHistory.add(croppedMetricDepth, croppedDepth.width, croppedDepth.height)
 
         val detections = decodeResult.boxes.map { box ->
-            val scaleX = config.depthInputWidth / bitmap.width.toFloat()
-            val scaleY = config.depthInputHeight / bitmap.height.toFloat()
+            val scaleX = croppedDepth.width / bitmap.width.toFloat()
+            val scaleY = croppedDepth.height / bitmap.height.toFloat()
             val sampled = DepthMath.sampleMedianInBox(
-                metricDepth,
-                config.depthInputWidth,
-                config.depthInputHeight,
+                croppedMetricDepth,
+                croppedDepth.width,
+                croppedDepth.height,
                 box.left * scaleX,
                 box.top * scaleY,
                 box.right * scaleX,
@@ -132,23 +144,31 @@ class InferenceEngine(
                 top = box.top,
                 right = box.right,
                 bottom = box.bottom,
-                distanceMeters = sampled?.times(calibrationFactor),
+                rawDistanceMeters = sampled,
+                distanceMeters = sampled?.let(calibration::apply),
+                rawCenterX = box.rawCenterX,
+                rawCenterY = box.rawCenterY,
+                rawWidth = box.rawWidth,
+                rawHeight = box.rawHeight,
             )
         }
+        val smoothedDetections = distanceSmoother.smooth(detections, calibration)
 
         return FrameResult(
             width = bitmap.width,
             height = bitmap.height,
-            detections = detections,
-            metricDepth = metricDepth,
-            depthWidth = config.depthInputWidth,
-            depthHeight = config.depthInputHeight,
-            depthColor = InfernoPalette.colorizeForDisplay(metricDepth),
+            detections = smoothedDetections,
+            metricDepth = croppedMetricDepth,
+            depthWidth = croppedDepth.width,
+            depthHeight = croppedDepth.height,
+            depthColor = InfernoPalette.colorizeForDisplay(croppedMetricDepth),
             inferenceLatencyMs = detectorLatencyMs + depthLatencyMs,
             fps = fps,
             runtimeLabel = runtimeLabel,
             detectorMaxScore = decodeResult.maxScore,
             detectorCandidatesAboveThreshold = decodeResult.candidatesAboveThreshold,
+            detectorValidBeforeNms = decodeResult.validBoxesBeforeNms,
+            detectorCoordinatesNormalized = decodeResult.coordinatesNormalized,
         )
     }
 
@@ -156,18 +176,20 @@ class InferenceEngine(
         result: FrameResult,
         frameX: Float,
         frameY: Float,
-        calibrationFactor: Float,
-    ): Float? {
+        calibration: LinearDepthCalibration,
+    ): DepthMeasurement? {
         val x = frameX * result.depthWidth / result.width
         val y = frameY * result.depthHeight / result.height
-        return DepthMath.sampleMedian(
-            result.metricDepth,
-            result.depthWidth,
-            result.depthHeight,
-            x,
-            y,
-            config.depthPatchSize,
-        )?.times(calibrationFactor)
+        val modelMeters = depthHistory.sampleMedian(x, y, config.depthPatchSize)
+            ?: return null
+        return DepthMeasurement(
+            modelMeters = modelMeters,
+            calibratedMeters = calibration.apply(modelMeters),
+        )
+    }
+
+    fun resetDistanceSmoothing() {
+        distanceSmoother.reset()
     }
 
     private fun runModel(

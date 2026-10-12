@@ -38,6 +38,7 @@ object CameraFrameConverter {
             }
         }
         val full = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        // Keep the CameraX crop in sensor coordinates, then rotate once into display coordinates.
         val crop = image.cropRect
         val cropped = if (
             crop.left == 0 && crop.top == 0 && crop.right == width && crop.bottom == height
@@ -53,6 +54,9 @@ object CameraFrameConverter {
             ).also { full.recycle() }
         }
         val rotation = image.imageInfo.rotationDegrees
+        require(rotation % 90 == 0) {
+            "CameraX rotation must be a multiple of 90 degrees; got $rotation."
+        }
         if (rotation == 0) return cropped
         val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
         return Bitmap.createBitmap(
