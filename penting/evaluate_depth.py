@@ -11,11 +11,6 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 
-if __package__:
-    from .depth_utils import raw_depth_to_meters
-else:
-    from depth_utils import raw_depth_to_meters
-
 
 @dataclass
 class DepthMetricAccumulator:
@@ -101,14 +96,19 @@ def compute_depth_metrics(
 
 
 def evaluate_nyu_validation(args: argparse.Namespace) -> dict[str, Any]:
-    import cv2
     import h5py
     import torch
 
     if __package__:
-        from .arsitektur_yolo_depth import YOLO26nDepth, load_depth_checkpoint
+        from .ultralytics_depth import (
+            load_calibrated_depth_model,
+            predict_calibrated_depth_meters,
+        )
     else:
-        from arsitektur_yolo_depth import YOLO26nDepth, load_depth_checkpoint
+        from ultralytics_depth import (
+            load_calibrated_depth_model,
+            predict_calibrated_depth_meters,
+        )
 
     with h5py.File(args.nyu_path, "r") as dataset_file:
         total_samples = int(dataset_file["images"].shape[0])
@@ -132,9 +132,7 @@ def evaluate_nyu_validation(args: argparse.Namespace) -> dict[str, Any]:
             if args.device != "auto"
             else ("cuda" if torch.cuda.is_available() else "cpu")
         )
-        model = YOLO26nDepth(width_mult=0.25, depth_mult=0.50).to(device)
-        load_depth_checkpoint(model, args.weights, device)
-        model.eval()
+        model = load_calibrated_depth_model(args.weights, device)
         metrics = DepthMetricAccumulator(silog_lambda=args.silog_lambda)
         valid_images = 0
         excluded_out_of_range = 0
@@ -148,24 +146,15 @@ def evaluate_nyu_validation(args: argparse.Namespace) -> dict[str, Any]:
                     1, 0
                 ).astype(np.float32)
 
-                image_rgb = cv2.resize(
-                    image_rgb.astype(np.uint8),
-                    (args.input_width, args.input_height),
-                    interpolation=cv2.INTER_AREA,
+                image_bgr = np.ascontiguousarray(image_rgb[:, :, ::-1]).astype(
+                    np.uint8,
+                    copy=False,
                 )
-                target_m = cv2.resize(
-                    target_m,
-                    (args.input_width, args.input_height),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-                image_tensor = torch.from_numpy(
-                    image_rgb.transpose(2, 0, 1).copy()
-                ).float().div_(255.0)
-                prediction_raw = model(
-                    image_tensor.unsqueeze(0).to(device)
-                )["depth"][0, 0].cpu().numpy()
-                prediction_m = raw_depth_to_meters(
-                    prediction_raw, max_depth_m=args.max_depth_m
+                prediction_m = predict_calibrated_depth_meters(
+                    model,
+                    image_bgr,
+                    device,
+                    input_size=args.input_size,
                 )
 
                 valid = (
@@ -193,6 +182,7 @@ def evaluate_nyu_validation(args: argparse.Namespace) -> dict[str, Any]:
             "images_with_valid_depth": valid_images,
             "excluded_gt_pixels_above_max_depth": excluded_out_of_range,
             "max_depth_m": args.max_depth_m,
+            "input_size": args.input_size,
             "silog_lambda": args.silog_lambda,
         }
     )
@@ -205,10 +195,9 @@ def main() -> None:
     )
     parser.add_argument("--nyu-path", default="data/nyu_depth_v2_labeled.mat")
     parser.add_argument(
-        "--weights", default="data/yolo26n_depth_nyu_full.pt"
+        "--weights", default="data/yolo26n-depth-nyu-calibrated.pt"
     )
-    parser.add_argument("--input-width", type=int, default=320)
-    parser.add_argument("--input-height", type=int, default=240)
+    parser.add_argument("--input-size", type=int, default=640)
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--split-seed", type=int, default=42)
@@ -229,8 +218,8 @@ def main() -> None:
     for path in (args.nyu_path, args.weights):
         if not os.path.isfile(path):
             parser.error(f"File tidak ditemukan: {path}")
-    if args.input_width <= 0 or args.input_height <= 0:
-        parser.error("Ukuran input harus bilangan positif.")
+    if args.input_size < 32 or args.input_size % 32:
+        parser.error("--input-size harus minimal 32 dan kelipatan 32.")
     if not np.isfinite(args.max_depth_m) or args.max_depth_m <= 0:
         parser.error("--max-depth-m harus bernilai positif.")
     if args.max_samples == 1:

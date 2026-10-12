@@ -83,9 +83,7 @@ def validate_photos(args: argparse.Namespace) -> None:
             frame = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
             if frame is None:
                 raise RuntimeError(f"Gagal membaca foto: {image_path}")
-            depth_m = predict_depth_meters(
-                model, device, frame, max_depth_m=args.max_depth_m
-            )
+            depth_m = predict_depth_meters(model, device, frame)
             depth_color = cv2.applyColorMap(
                 normalize_depth_for_display(depth_m), cv2.COLORMAP_INFERNO
             )
@@ -174,7 +172,10 @@ def main() -> None:
         description="Generate a blank template or sample real-distance photos."
     )
     parser.add_argument("--image-dir", default="data/metric_photos")
-    parser.add_argument("--weights", default="data/yolo26n_depth_nyu_full.pt")
+    parser.add_argument(
+        "--weights",
+        default="data/yolo26n-depth-nyu-calibrated.pt",
+    )
     parser.add_argument("--output", default="data/metric_validation.csv")
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument("--patch-size", type=int, default=5)

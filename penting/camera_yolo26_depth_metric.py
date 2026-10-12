@@ -11,7 +11,6 @@ import numpy as np
 import torch
 
 if __package__:
-    from .arsitektur_yolo_depth import YOLO26nDepth, load_depth_checkpoint
     from .depth_utils import (
         DepthEMASmoother,
         get_depth_at_point,
@@ -19,10 +18,12 @@ if __package__:
         get_depth_patch_stats,
         meters_to_cm,
         normalize_depth_for_display,
-        raw_depth_to_meters,
+    )
+    from .ultralytics_depth import (
+        load_calibrated_depth_model,
+        predict_calibrated_depth_meters,
     )
 else:
-    from arsitektur_yolo_depth import YOLO26nDepth, load_depth_checkpoint
     from depth_utils import (
         DepthEMASmoother,
         get_depth_at_point,
@@ -30,47 +31,33 @@ else:
         get_depth_patch_stats,
         meters_to_cm,
         normalize_depth_for_display,
-        raw_depth_to_meters,
+    )
+    from ultralytics_depth import (
+        load_calibrated_depth_model,
+        predict_calibrated_depth_meters,
     )
 
 
-DEPTH_INPUT_WIDTH = 320
-DEPTH_INPUT_HEIGHT = 240
+DEPTH_INPUT_SIZE = 640
 
 
-def load_depth_model(weights_path: str, device: torch.device) -> YOLO26nDepth:
-    """Load the local YOLO26nDepth state dict without unpickling model objects."""
-    model = YOLO26nDepth(width_mult=0.25, depth_mult=0.50).to(device)
-    load_depth_checkpoint(model, weights_path, device)
-    model.eval()
-    return model
+def load_depth_model(weights_path: str, device: torch.device) -> torch.nn.Module:
+    """Load the calibrated YOLO26n-Depth checkpoint used by the current pipeline."""
+    return load_calibrated_depth_model(weights_path, device)
 
 
 def predict_depth_meters(
-    model: YOLO26nDepth,
+    model: torch.nn.Module,
     device: torch.device,
     frame_bgr: np.ndarray,
-    input_width: int = DEPTH_INPUT_WIDTH,
-    input_height: int = DEPTH_INPUT_HEIGHT,
-    max_depth_m: float = 10.0,
+    input_size: int = DEPTH_INPUT_SIZE,
 ) -> np.ndarray:
-    """Run local depth inference and return a metric map at camera resolution."""
-    resized = cv2.resize(
+    """Return the model's calibrated meter predictions at camera resolution."""
+    return predict_calibrated_depth_meters(
+        model,
         frame_bgr,
-        (input_width, input_height),
-        interpolation=cv2.INTER_AREA,
-    )
-    rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-    image = torch.from_numpy(rgb.transpose(2, 0, 1).copy())
-    image = image.unsqueeze(0).to(device=device, dtype=torch.float32).div_(255.0)
-
-    with torch.inference_mode():
-        output = model(image)
-    raw_depth = output["depth"][0, 0].detach().cpu().numpy()
-    depth_meters = raw_depth_to_meters(raw_depth, max_depth_m=max_depth_m)
-    height, width = frame_bgr.shape[:2]
-    return cv2.resize(
-        depth_meters, (width, height), interpolation=cv2.INTER_LINEAR
+        device,
+        input_size=input_size,
     )
 
 
@@ -264,9 +251,7 @@ def run_camera(
             if not ok:
                 raise RuntimeError("Gagal membaca frame dari kamera.")
 
-            depth_m = predict_depth_meters(
-                depth_model, device, frame, max_depth_m=max_depth_m
-            )
+            depth_m = predict_depth_meters(depth_model, device, frame)
             depth_m = smoother.update(depth_m)
             state["depth_m"] = depth_m
             state["frame_width"] = frame.shape[1]
@@ -340,7 +325,10 @@ def main() -> None:
         description="COCO detector plus local metric-depth camera demo"
     )
     parser.add_argument("--detector", default="data/yolo26n.pt")
-    parser.add_argument("--depth-weights", default="data/yolo26n_depth_nyu_full.pt")
+    parser.add_argument(
+        "--depth-weights",
+        default="data/yolo26n-depth-nyu-calibrated.pt",
+    )
     parser.add_argument("--camera", type=int, default=0)
     parser.add_argument(
         "--conf",
