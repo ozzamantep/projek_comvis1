@@ -22,7 +22,8 @@ DEFAULT_METADATA_PATH = (
     "yolo26n_multitask_coco4_v1_20261013-163528-539afa/"
     "inference/model_metadata.json"
 )
-DEFAULT_CAMERA_DEPTH_SCALE = 0.4967948718
+DEFAULT_CAMERA_DEPTH_SCALE = 0.9935897436
+DEFAULT_CAMERA_DEPTH_OFFSET_M = -1.2
 
 # Depth application
 def meters_to_cm(meters: ArrayLike) -> NDArray[np.float32]:
@@ -31,12 +32,19 @@ def meters_to_cm(meters: ArrayLike) -> NDArray[np.float32]:
 
 
 def calibrate_depth_map(
-    depth_m: ArrayLike, scale: float = DEFAULT_CAMERA_DEPTH_SCALE
+    depth_m: ArrayLike,
+    scale: float = DEFAULT_CAMERA_DEPTH_SCALE,
+    offset_m: float = DEFAULT_CAMERA_DEPTH_OFFSET_M,
 ) -> NDArray[np.float32]:
-    """Apply the empirical webcam scale to a metric depth map."""
+    """Apply the empirical affine calibration to a webcam depth map."""
     if not np.isfinite(scale) or scale <= 0:
         raise ValueError("Depth calibration scale must be finite and positive.")
-    return np.asarray(depth_m, dtype=np.float32) * np.float32(scale)
+    if not np.isfinite(offset_m):
+        raise ValueError("Depth calibration offset must be finite.")
+    return (
+        np.asarray(depth_m, dtype=np.float32) * np.float32(scale)
+        + np.float32(offset_m)
+    )
 
 
 class DepthPatchStats(NamedTuple):
@@ -507,6 +515,7 @@ def run_camera(
     max_depth_m: float,
     debug: bool,
     depth_scale: float,
+    depth_offset_m: float,
 ) -> None:
     camera = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
     if not camera.isOpened():
@@ -531,7 +540,10 @@ def run_camera(
         "Tampilan awal split: deteksi + jarak di kiri, depth + jarak di kanan. "
         "Klik untuk mengukur titik; s: ganti tampilan; d: overlay on/off; q: keluar."
     )
-    print(f"Kalibrasi skala depth kamera: x{depth_scale:.4f}")
+    print(
+        "Kalibrasi depth kamera: "
+        f"x{depth_scale:.4f} {depth_offset_m:+.2f} m"
+    )
     if debug:
         print(
             "Debug aktif: nilai raw di center bbox, ukuran patch efektif, "
@@ -545,7 +557,9 @@ def run_camera(
                 raise RuntimeError("Gagal membaca frame dari kamera.")
 
             detections, depth_m = model.predict(frame)
-            depth_m = calibrate_depth_map(smoother.update(depth_m), depth_scale)
+            depth_m = calibrate_depth_map(
+                smoother.update(depth_m), depth_scale, depth_offset_m
+            )
             state["depth_m"] = depth_m
             state["frame_width"] = frame.shape[1]
 
@@ -663,10 +677,13 @@ def camera_main() -> None:
         "--depth-scale",
         type=float,
         default=DEFAULT_CAMERA_DEPTH_SCALE,
-        help=(
-            "Kalibrasi skala webcam (default x0.4968 dari sepuluh pasangan "
-            "ukur; khusus setup kamera ini)."
-        ),
+        help="Faktor skala depth webcam (default: x0.9936).",
+    )
+    parser.add_argument(
+        "--depth-offset-m",
+        type=float,
+        default=DEFAULT_CAMERA_DEPTH_OFFSET_M,
+        help="Offset depth webcam dalam meter (default: -1.2 m).",
     )
     parser.add_argument(
         "--debug",
@@ -686,6 +703,8 @@ def camera_main() -> None:
         parser.error("--max-depth-m harus bernilai positif.")
     if not np.isfinite(args.depth_scale) or args.depth_scale <= 0:
         parser.error("--depth-scale harus bernilai positif.")
+    if not np.isfinite(args.depth_offset_m):
+        parser.error("--depth-offset-m harus bernilai finite.")
 
     model = load_multitask_onnx_model(args.model, args.metadata)
     try:
@@ -702,6 +721,7 @@ def camera_main() -> None:
         args.max_depth_m,
         args.debug,
         args.depth_scale,
+        args.depth_offset_m,
     )
 
 

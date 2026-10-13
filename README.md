@@ -27,6 +27,12 @@ Kamera selain perangkat default dapat dipilih, misalnya:
 .\.venv\Scripts\python.exe main.py --camera 1
 ```
 
+Kalibrasi kamera saat ini menggunakan transformasi `jarak x 0.9936 - 1.2 m`,
+berdasarkan pengukuran 60 cm → 90 cm dan 80 cm → 100 cm sebelum kalibrasi ini.
+Offset dapat disetel dengan `--depth-offset-m`, sedangkan faktor skala dapat
+disetel dengan `--depth-scale`. Kalibrasi ini khusus untuk kamera dan setup
+pengukuran tersebut.
+
 ## Model
 
 Inferensi memakai ONNX Runtime dan model ONNX multitask berikut:

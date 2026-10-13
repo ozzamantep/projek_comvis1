@@ -4,6 +4,7 @@ import numpy as np
 
 from main import (
     DepthEMASmoother,
+    DEFAULT_CAMERA_DEPTH_OFFSET_M,
     DEFAULT_CAMERA_DEPTH_SCALE,
     calibrate_depth_map,
     get_depth_at_point,
@@ -15,18 +16,19 @@ from main import (
 
 
 class DepthUtilsTests(unittest.TestCase):
-    def test_webcam_depth_calibration_uses_empirical_scale(self):
+    def test_webcam_depth_calibration_matches_latest_measurements(self):
+        previous_scale = 0.4967948718
         calibrated = calibrate_depth_map(
-            np.array([[1.6, 1.7, 1.8]], dtype=np.float32)
+            np.array([[0.9, 1.0]], dtype=np.float32) / previous_scale
         )
         np.testing.assert_allclose(
-            calibrated,
-            np.array([[0.7948718, 0.8445513, 0.8942308]], dtype=np.float32),
+            calibrated, np.array([[0.6, 0.8]], dtype=np.float32),
             rtol=1e-6,
         )
         self.assertAlmostEqual(
-            DEFAULT_CAMERA_DEPTH_SCALE, 0.4967948718, places=8
+            DEFAULT_CAMERA_DEPTH_SCALE, 0.9935897436, places=8
         )
+        self.assertAlmostEqual(DEFAULT_CAMERA_DEPTH_OFFSET_M, -1.2, places=8)
 
     def test_depth_calibration_rejects_non_positive_or_non_finite_scale(self):
         for scale in (0.0, -1.0, np.nan, np.inf):
@@ -34,6 +36,11 @@ class DepthUtilsTests(unittest.TestCase):
                 ValueError, "finite and positive"
             ):
                 calibrate_depth_map(np.ones((2, 2), dtype=np.float32), scale)
+        for offset in (np.nan, np.inf, -np.inf):
+            with self.subTest(offset=offset), self.assertRaisesRegex(
+                ValueError, "offset must be finite"
+            ):
+                calibrate_depth_map(np.ones((2, 2), dtype=np.float32), offset_m=offset)
 
     def test_bbox_uses_median_patch_around_center(self):
         depth = np.full((7, 7), 2.0, dtype=np.float32)
