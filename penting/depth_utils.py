@@ -1,4 +1,4 @@
-"""Metric-depth helpers for the local YOLO26nDepth output."""
+"""Sampling, smoothing, and display helpers for metric-depth maps."""
 
 from __future__ import annotations
 
@@ -7,20 +7,6 @@ from typing import NamedTuple
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-
-
-def raw_depth_to_meters(
-    raw_depth: ArrayLike, max_depth_m: float = 10.0
-) -> NDArray[np.float32]:
-    """Convert the model's normalized raw depth to meters.
-
-    The current NYU training pipeline divides metric depth by 10 and clips it
-    to [0, 1]. This conversion is valid only for weights trained with that
-    target scaling; do not pass per-frame display-normalized depth here.
-    """
-    if not np.isfinite(max_depth_m) or max_depth_m <= 0:
-        raise ValueError("max_depth_m must be a finite positive number.")
-    return np.asarray(raw_depth, dtype=np.float32) * np.float32(max_depth_m)
 
 
 def meters_to_cm(meters: ArrayLike) -> NDArray[np.float32]:

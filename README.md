@@ -26,10 +26,12 @@ dapat langsung dimuat sebagai state dict model eksperimen tersebut.
 
 ## Struktur
 
-- `penting/`: arsitektur `YOLO26nDepth`, trainer NYU, runner kamera, helper depth,
-  evaluasi NYU, validasi foto jarak, kalibrasi, diagnostik preprocessing, dan tes.
-- `pendukung/`: skrip simulasi/prototipe, runner alternatif, dan alat inspeksi
-  MATLAB.
+- `penting/`: satu modul per tanggung jawab—runner multitask, helper inferensi,
+  evaluasi, validasi, kalibrasi, trainer/diagnostik eksperimen, dan tes.
+- `mobile/android_app/`: kelas Kotlin dipisah per class/komponen, mengikuti pola
+  Android; tidak digabung menjadi satu file besar.
+- `pendukung/`: contoh/prototipe mandiri dan alat inspeksi MATLAB, bukan jalur
+  inferensi utama.
 - `data/`: checkpoint dan data lokal yang diperlukan oleh beberapa perintah.
 - `data/pendukung/`: checkpoint eksperimental dan model alternatif.
 - `README_STRUKTUR.md`: daftar fungsi file dan perintah kerja lebih lengkap.

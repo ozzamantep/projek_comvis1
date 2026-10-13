@@ -9,16 +9,10 @@ from ..depth_utils import (
     get_depth_patch_stats,
     meters_to_cm,
     normalize_depth_for_display,
-    raw_depth_to_meters,
 )
 
 
 class DepthUtilsTests(unittest.TestCase):
-    def test_metric_conversion_uses_raw_depth_scale(self):
-        meters = raw_depth_to_meters(np.array([0.0, 0.25, 1.0]))
-        np.testing.assert_allclose(meters, [0.0, 2.5, 10.0])
-        np.testing.assert_allclose(meters_to_cm(meters), [0.0, 250.0, 1000.0])
-
     def test_bbox_uses_median_patch_around_center(self):
         depth = np.full((7, 7), 2.0, dtype=np.float32)
         depth[3, 3] = 8.0

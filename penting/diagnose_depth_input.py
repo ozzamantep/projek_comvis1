@@ -15,13 +15,11 @@ import torch
 
 if __package__:
     from .arsitektur_yolo_depth import (
-        NYUDepthV2Dataset,
         YOLO26nDepth,
         load_depth_checkpoint,
     )
 else:
     from arsitektur_yolo_depth import (
-        NYUDepthV2Dataset,
         YOLO26nDepth,
         load_depth_checkpoint,
     )
@@ -199,7 +197,6 @@ def select_val_indices(total_samples: int, max_samples: int, count: int) -> np.n
 
 
 def checkpoint_collapse_report(
-    name: str,
     weights_path: str,
     nyu_file: h5py.File,
     val_indices: np.ndarray,
@@ -362,7 +359,6 @@ def run_diagnostic(args: argparse.Namespace) -> dict[str, Any]:
         for checkpoint_name, checkpoint_path in checkpoint_paths.items():
             try:
                 collapse_results[checkpoint_name] = checkpoint_collapse_report(
-                    checkpoint_name,
                     checkpoint_path,
                     nyu_file,
                     val_indices,
