@@ -39,6 +39,7 @@ class DetectionOverlayView(context: Context) : View(context) {
     private var depthBitmap: Bitmap? = null
     private var showDepth = false
     private var tapPoint: Pair<Float, Float>? = null
+    private var tapModelDistance: Float? = null
     private var tapDistance: Float? = null
     var onMeasureTap: ((Float, Float) -> Unit)? = null
 
@@ -51,6 +52,7 @@ class DetectionOverlayView(context: Context) : View(context) {
         bitmap: Bitmap?,
         depthVisible: Boolean,
         measurePoint: Pair<Float, Float>?,
+        measureModelMeters: Float?,
         measureMeters: Float?,
     ) {
         frameWidth = result.width
@@ -59,6 +61,7 @@ class DetectionOverlayView(context: Context) : View(context) {
         depthBitmap = bitmap
         showDepth = depthVisible
         tapPoint = measurePoint
+        tapModelDistance = measureModelMeters
         tapDistance = measureMeters
         invalidate()
     }
@@ -109,12 +112,13 @@ class DetectionOverlayView(context: Context) : View(context) {
             val y = imageRect.top + point.second * scaleY
             canvas.drawCircle(x, y, 12f * resources.displayMetrics.density, tapPaint)
             tapDistance?.let { distance ->
+                val modelDistance = tapModelDistance
                 canvas.drawText(
                     String.format(
                         Locale.US,
-                        "Tap: %.2f m / %.0f cm",
+                        "Tap: %.2f m (model %.2f m)",
                         distance,
-                        distance * 100f,
+                        modelDistance ?: distance,
                     ),
                     x + 14f,
                     y - 14f,

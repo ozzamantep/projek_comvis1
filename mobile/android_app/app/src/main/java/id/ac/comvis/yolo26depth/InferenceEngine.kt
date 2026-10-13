@@ -3,72 +3,44 @@ package id.ac.comvis.yolo26depth
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
-import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.gpu.GpuDelegate
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
+import ai.onnxruntime.TensorInfo
 import java.io.Closeable
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class InferenceEngine(
     context: Context,
     private val config: ModelConfig,
 ) : Closeable {
-    private data class RuntimeModel(
-        val interpreter: Interpreter,
-        val delegate: GpuDelegate?,
-        val label: String,
-    )
-
     private val appContext = context.applicationContext
-    private val depthModel = createInterpreter(config.depthModel)
-    private val detectorModel = createInterpreter(config.detectorModel)
+    private val ortEnvironment = OrtEnvironment.getEnvironment()
+    private val session = createSession()
     private val ema = DepthEma(config.emaAlpha)
     private val depthHistory = DepthFrameHistory(maxFrames = 7)
     private val distanceSmoother = DetectionDistanceSmoother(maxFrames = 7)
 
-    val runtimeLabel: String
-        get() = "Depth ${depthModel.label} · Detektor ${detectorModel.label}"
+    val runtimeLabel: String = "YOLO26n multitask · ONNX Runtime CPU"
 
     init {
-        val depthInput = depthModel.interpreter.getInputTensor(0).shape()
-        val depthOutput = depthModel.interpreter.getOutputTensor(0).shape()
-        val expectedDepthInput = if (config.depthInputLayout == "NCHW") {
-            intArrayOf(1, 3, config.depthInputHeight, config.depthInputWidth)
-        } else {
-            intArrayOf(1, config.depthInputHeight, config.depthInputWidth, 3)
+        val inputInfo = session.inputInfo[config.inputName]?.info as? TensorInfo
+            ?: error("Input ONNX '${config.inputName}' tidak ditemukan atau bukan tensor.")
+        require(inputInfo.shape.contentEquals(longArrayOf(1, 3, config.inputHeight.toLong(), config.inputWidth.toLong()))) {
+            "Bentuk input ONNX ${inputInfo.shape.contentToString()} tidak cocok dengan " +
+                "[1, 3, ${config.inputHeight}, ${config.inputWidth}]."
         }
-        require(depthInput.contentEquals(expectedDepthInput)) {
-            "Depth input ${depthInput.contentToString()}, expected " +
-                "${expectedDepthInput.contentToString()} ${config.depthInputLayout}."
+        val detectionInfo = session.outputInfo[config.detectionOutputName]?.info as? TensorInfo
+            ?: error("Output deteksi ONNX '${config.detectionOutputName}' tidak ditemukan.")
+        require(detectionInfo.shape.contentEquals(longArrayOf(1, config.detectorMaxDetections.toLong(), 6))) {
+            "Bentuk output deteksi ${detectionInfo.shape.contentToString()} tidak cocok " +
+                "dengan [1, ${config.detectorMaxDetections}, 6]."
         }
-        val expectedDepthOutput = if (config.depthOutputLayout == "NCHW") {
-            intArrayOf(1, config.depthOutputChannels, config.depthInputHeight, config.depthInputWidth)
-        } else {
-            intArrayOf(1, config.depthInputHeight, config.depthInputWidth, config.depthOutputChannels)
+        val depthInfo = session.outputInfo[config.depthOutputName]?.info as? TensorInfo
+            ?: error("Output depth ONNX '${config.depthOutputName}' tidak ditemukan.")
+        require(depthInfo.shape.contentEquals(longArrayOf(1, 1, config.inputHeight.toLong(), config.inputWidth.toLong()))) {
+            "Bentuk output depth ${depthInfo.shape.contentToString()} tidak cocok dengan " +
+                "[1, 1, ${config.inputHeight}, ${config.inputWidth}]."
         }
-        require(depthOutput.contentEquals(expectedDepthOutput)) {
-            "Depth output ${depthOutput.contentToString()}, expected " +
-                "${expectedDepthOutput.contentToString()} ${config.depthOutputLayout}."
-        }
-
-        val detectorInput = detectorModel.interpreter.getInputTensor(0).shape()
-        val detectorOutput = detectorModel.interpreter.getOutputTensor(0).shape()
-        require(detectorInput.contentEquals(
-            intArrayOf(1, 3, config.detectorInputSize, config.detectorInputSize),
-        )) {
-            "Detector input ${detectorInput.contentToString()} does not match configured NCHW input."
-        }
-        require(detectorOutput.contentEquals(
-            intArrayOf(
-                1,
-                config.detectorOutputChannels,
-                config.detectorCandidates,
-            ),
-        )) {
-            "Detector output ${detectorOutput.contentToString()} does not match configured BCN output."
-        }
-        require(depthModel.interpreter.getInputTensor(0).dataType().name == "FLOAT32")
-        require(detectorModel.interpreter.getInputTensor(0).dataType().name == "FLOAT32")
     }
 
     fun runFrame(
@@ -78,44 +50,47 @@ class InferenceEngine(
         calibration: LinearDepthCalibration,
         fps: Float,
     ): FrameResult {
-        val (detectorInput, letterbox) = ImagePreprocessor.detectorInput(
+        val (inputBuffer, transform) = ImagePreprocessor.multitaskInput(
             bitmap,
-            config.detectorInputSize,
+            config.inputWidth,
+            config.inputHeight,
         )
-        val detectorStart = SystemClock.elapsedRealtimeNanos()
-        val detectorOutput = runModel(
-            detectorModel,
-            detectorInput,
-            config.detectorOutputChannels * config.detectorCandidates,
+        val inferenceStart = SystemClock.elapsedRealtimeNanos()
+        val tensor = OnnxTensor.createTensor(
+            ortEnvironment,
+            inputBuffer.asFloatBuffer(),
+            longArrayOf(1, 3, config.inputHeight.toLong(), config.inputWidth.toLong()),
         )
-        val detectorLatencyMs =
-            (SystemClock.elapsedRealtimeNanos() - detectorStart) / 1_000_000f
 
-        val decodeResult = YoloPostprocessor.decode(
-            output = detectorOutput,
+        val (detectionOutput, depthRaw) = tensor.use { inputTensor ->
+            session.run(mapOf(config.inputName to inputTensor)).use { outputs ->
+                val detections = outputs.get(config.detectionOutputName).orElseThrow {
+                    IllegalStateException("Output '${config.detectionOutputName}' hilang dari model.")
+                } as OnnxTensor
+                val depth = outputs.get(config.depthOutputName).orElseThrow {
+                    IllegalStateException("Output '${config.depthOutputName}' hilang dari model.")
+                } as OnnxTensor
+                readTensor(detections, config.detectorMaxDetections * 6) to
+                    readTensor(depth, config.inputWidth * config.inputHeight)
+            }
+        }
+        val inferenceLatencyMs = (SystemClock.elapsedRealtimeNanos() - inferenceStart) / 1_000_000f
+
+        val decodeResult = YoloPostprocessor.decodeEndToEnd(
+            output = detectionOutput,
             config = config,
-            transform = letterbox,
+            transform = transform,
             confidenceThreshold = confidenceThreshold,
             selectedClasses = selectedClasses,
         )
-
-        val (depthInput, depthTransform) = ImagePreprocessor.depthInput(bitmap, config)
-        val depthStart = SystemClock.elapsedRealtimeNanos()
-        val depthRaw = runModel(
-            depthModel,
-            depthInput,
-            config.depthInputWidth * config.depthInputHeight,
-        )
-        val depthLatencyMs =
-            (SystemClock.elapsedRealtimeNanos() - depthStart) / 1_000_000f
         val metricDepthSquare = FloatArray(depthRaw.size) { index ->
             depthRaw[index] * config.depthScaleMeters
         }
         val croppedDepth = DepthMath.removeLetterbox(
             metricDepthSquare,
-            config.depthInputWidth,
-            config.depthInputHeight,
-            depthTransform,
+            config.inputWidth,
+            config.inputHeight,
+            transform,
         )
         val croppedMetricDepth = ema.update(
             croppedDepth.values,
@@ -138,7 +113,7 @@ class InferenceEngine(
             )
             Detection(
                 classId = box.classId,
-                className = CocoLabels.names[box.classId],
+                className = config.classNames[box.classId],
                 confidence = box.confidence,
                 left = box.left,
                 top = box.top,
@@ -162,7 +137,7 @@ class InferenceEngine(
             depthWidth = croppedDepth.width,
             depthHeight = croppedDepth.height,
             depthColor = InfernoPalette.colorizeForDisplay(croppedMetricDepth),
-            inferenceLatencyMs = detectorLatencyMs + depthLatencyMs,
+            inferenceLatencyMs = inferenceLatencyMs,
             fps = fps,
             runtimeLabel = runtimeLabel,
             detectorMaxScore = decodeResult.maxScore,
@@ -192,76 +167,27 @@ class InferenceEngine(
         distanceSmoother.reset()
     }
 
-    private fun runModel(
-        runtime: RuntimeModel,
-        input: ByteBuffer,
-        outputFloatCount: Int,
-    ): FloatArray {
-        val output = ByteBuffer.allocateDirect(outputFloatCount * Float.SIZE_BYTES)
-            .order(ByteOrder.nativeOrder())
-        input.rewind()
-        runtime.interpreter.run(input, output)
-        output.rewind()
-        val floatBuffer = output.asFloatBuffer()
-        return FloatArray(outputFloatCount).also(floatBuffer::get)
+    private fun readTensor(tensor: OnnxTensor, count: Int): FloatArray {
+        val floatBuffer = tensor.floatBuffer
+            ?: error("Output ONNX harus berupa tensor float.")
+        require(floatBuffer.remaining() == count) {
+            "Jumlah nilai output ONNX ${floatBuffer.remaining()}, seharusnya $count."
+        }
+        return FloatArray(count).also(floatBuffer::get)
     }
 
-    private fun createInterpreter(assetName: String): RuntimeModel {
-        val modelBuffer = appContext.assets.open(assetName).use { input ->
-            val bytes = input.readBytes()
-            ByteBuffer.allocateDirect(bytes.size)
-                .order(ByteOrder.nativeOrder())
-                .apply {
-                    put(bytes)
-                    rewind()
-                }
+    private fun createSession(): OrtSession {
+        val modelBytes = appContext.assets.open(config.model).use { it.readBytes() }
+        val options = OrtSession.SessionOptions()
+        options.setIntraOpNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4))
+        return try {
+            ortEnvironment.createSession(modelBytes, options)
+        } finally {
+            options.close()
         }
-
-        var gpuDelegate: GpuDelegate? = null
-        var gpuInterpreter: Interpreter? = null
-        try {
-            gpuDelegate = GpuDelegate()
-            val gpuOptions = Interpreter.Options()
-                .addDelegate(gpuDelegate)
-                .setNumThreads(4)
-            val initializedInterpreter = Interpreter(modelBuffer, gpuOptions)
-            gpuInterpreter = initializedInterpreter
-            initializedInterpreter.allocateTensors()
-            return RuntimeModel(initializedInterpreter, gpuDelegate, "GPU")
-        } catch (gpuError: Exception) {
-            gpuInterpreter?.close()
-            gpuDelegate?.close()
-            logGpuFallback(assetName, gpuError)
-        } catch (gpuError: LinkageError) {
-            gpuInterpreter?.close()
-            gpuDelegate?.close()
-            logGpuFallback(assetName, gpuError)
-        }
-
-        val cpuOptions = Interpreter.Options()
-            .setNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4))
-            .setUseXNNPACK(true)
-        val cpuInterpreter = Interpreter(modelBuffer, cpuOptions)
-        cpuInterpreter.allocateTensors()
-        return RuntimeModel(cpuInterpreter, null, "CPU/XNNPACK")
-    }
-
-    private fun logGpuFallback(assetName: String, error: Throwable) {
-        android.util.Log.w(
-            TAG,
-            "GPU delegate unavailable for $assetName; retrying on CPU/XNNPACK.",
-            error,
-        )
     }
 
     override fun close() {
-        depthModel.interpreter.close()
-        detectorModel.interpreter.close()
-        depthModel.delegate?.close()
-        detectorModel.delegate?.close()
-    }
-
-    companion object {
-        private const val TAG = "Yolo26Depth"
+        session.close()
     }
 }

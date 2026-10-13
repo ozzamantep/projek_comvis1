@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.PointF
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -12,6 +13,7 @@ import android.view.Gravity
 import android.view.Surface
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.hardware.camera2.CameraCharacteristics
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -24,15 +26,23 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import com.google.mlkit.vision.barcode.BarcodeScanner
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
 import java.util.Locale
 import java.io.IOException
 import java.io.OutputStreamWriter
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.hypot
+import kotlin.math.min
 
 class MainActivity : androidx.activity.ComponentActivity() {
     private lateinit var previewView: PreviewView
@@ -45,6 +55,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private lateinit var frameRow: LinearLayout
     private lateinit var previewHost: android.widget.FrameLayout
     private lateinit var cameraExecutor: ExecutorService
+    private lateinit var markerExecutor: ExecutorService
+    private lateinit var markerScanner: BarcodeScanner
     private lateinit var config: ModelConfig
     private lateinit var calibrationPairsInput: EditText
     private var inferenceEngine: InferenceEngine? = null
@@ -61,6 +73,13 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var framesInFpsWindow = 0
     private var displayedFps = 0f
     private val isBindingCamera = AtomicBoolean(false)
+    private val markerScanPending = AtomicBoolean(false)
+    private val markerAutoCalibrator = MarkerAutoCalibrator()
+    @Volatile private var markerCalibrationEnabled = false
+    @Volatile private var cameraFocalLengthMm: Float? = null
+    @Volatile private var cameraSensorSizeMm: android.util.SizeF? = null
+    @Volatile private var lastAutoCalibrationSaveMs = 0L
+    @Volatile private var markerOpticsWarningShown = false
     private var permissionPermanentlyDenied = false
     private var startupError: String? = null
     private var cameraBound = false
@@ -73,6 +92,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private val csvExportLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
             if (uri != null) exportCalibrationCsv(uri)
+        }
+
+    private val markerExportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+            if (uri != null) exportCalibrationMarker(uri)
         }
 
     private val permissionLauncher =
@@ -102,9 +126,24 @@ class MainActivity : androidx.activity.ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         cameraExecutor = Executors.newSingleThreadExecutor()
+        markerExecutor = Executors.newSingleThreadExecutor()
+        markerScanner = BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build(),
+        )
         try {
             config = ModelConfig.load(this)
             confidenceThreshold = config.detectorConfidence
+            if (calibrationPreferences.getInt(CALIBRATION_PROFILE_VERSION, 0) < 3) {
+                val saved = calibrationPreferences.edit()
+                    .putFloat(CALIBRATION_A, 1f)
+                    .putFloat(CALIBRATION_B, 0f)
+                    .putString(CALIBRATION_PAIRS, "")
+                    .putInt(CALIBRATION_PROFILE_VERSION, 3)
+                    .commit()
+                if (!saved) throw IOException("Reset kalibrasi ke nilai model mentah gagal disimpan.")
+            }
             depthCalibration = LinearDepthCalibration(
                 a = calibrationPreferences.getFloat(CALIBRATION_A, 1f),
                 b = calibrationPreferences.getFloat(CALIBRATION_B, 0f),
@@ -257,7 +296,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         controls.addView(confidenceLabel)
         controls.addView(confidenceSeekBar)
         controls.addView(Button(this).apply {
-            text = "Reset confidence ke 0.25"
+            text = "Reset confidence ke 0.05"
             setOnClickListener {
                 confidenceThreshold = DEFAULT_CONFIDENCE
                 confidenceSeekBar.progress =
@@ -273,7 +312,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         filterRow.addView(text("Kelas (kosong = semua):", 12f))
         val classFilter = EditText(this).apply {
             setSingleLine(true)
-            hint = "person, cell phone"
+            hint = "chair, curtain, computer"
             setTextColor(0xffffffff.toInt())
             setHintTextColor(0xffaaaaaa.toInt())
             textSize = 13f
@@ -344,7 +383,37 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 csvExportLauncher.launch("depth_validation.csv")
             }
         })
+        calibrationButtons.addView(Button(this).apply {
+            text = "Reset ke mentah"
+            setOnClickListener { resetCalibrationToRaw() }
+        })
         controls.addView(calibrationButtons)
+        val markerCalibrationRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        markerCalibrationRow.addView(Switch(this).apply {
+            text = "Auto kalibrasi QR 10 cm"
+            setTextColor(0xffffffff.toInt())
+            setOnCheckedChangeListener { _, enabled ->
+                markerCalibrationEnabled = enabled
+                if (enabled) {
+                    markerAutoCalibrator.reset()
+                    statusView.text =
+                        "Arahkan QR 10 cm ke kamera; gerakkan perlahan dari 0,5 sampai 3 m."
+                } else {
+                    statusView.text = "Kalibrasi marker otomatis dijeda."
+                }
+            }
+        })
+        markerCalibrationRow.addView(Button(this).apply {
+            text = "Simpan marker PDF"
+            setOnClickListener { markerExportLauncher.launch("marker_kalibrasi_10cm.pdf") }
+        })
+        controls.addView(markerCalibrationRow)
+        controls.addView(
+            text("Cetak PDF ukuran sebenarnya (kotak hitam 10 × 10 cm); hadapkan ke kamera.", 11f),
+        )
         calibrationSummaryView = text(calibrationDescription(), 12f)
         controls.addView(calibrationSummaryView)
 
@@ -401,7 +470,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 statusView.text = distance?.let {
                     String.format(
                         Locale.US,
-                        "Tap model %.2f m → linear %.2f m / %.0f cm — estimasi.",
+                        "Tap model mentah %.2f m → hasil kalibrasi %.2f m / %.0f cm.",
                         it.modelMeters,
                         it.calibratedMeters,
                         it.calibratedMeters * 100f,
@@ -459,6 +528,18 @@ class MainActivity : androidx.activity.ComponentActivity() {
                                 fps = nextFps(),
                             )
                             if (result != null) {
+                                if (markerCalibrationEnabled) {
+                                    val focalPixels = markerFocalPixels(image, cameraFrame.width)
+                                    if (focalPixels != null) {
+                                        scheduleMarkerScan(cameraFrame, result, focalPixels)
+                                    } else if (!markerOpticsWarningShown) {
+                                        markerOpticsWarningShown = true
+                                        runOnUiThread {
+                                            calibrationSummaryView.text =
+                                                "Kamera tidak memberi metadata lensa; kalibrasi QR otomatis tidak tersedia."
+                                        }
+                                    }
+                                }
                                 runOnUiThread { displayResult(result) }
                             }
                         } catch (error: Exception) {
@@ -482,6 +563,13 @@ class MainActivity : androidx.activity.ComponentActivity() {
                         .addUseCase(preview)
                         .addUseCase(analysis)
                         .build()
+                    val cameraInfo = provider.getCameraInfo(CameraSelector.DEFAULT_BACK_CAMERA)
+                    val camera2Info = Camera2CameraInfo.from(cameraInfo)
+                    cameraFocalLengthMm = camera2Info
+                        .getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                        ?.firstOrNull()
+                    cameraSensorSizeMm = camera2Info
+                        .getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
                     provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, useCases)
                     cameraBound = true
                     statusView.text = "Kamera aktif. Tap gambar untuk mengukur titik."
@@ -495,6 +583,158 @@ class MainActivity : androidx.activity.ComponentActivity() {
             },
             ContextCompat.getMainExecutor(this),
         )
+    }
+
+    private fun markerFocalPixels(image: androidx.camera.core.ImageProxy, frameWidth: Int): Float? {
+        val focalMm = cameraFocalLengthMm ?: return null
+        val sensorSize = cameraSensorSizeMm ?: return null
+        val crop = image.cropRect
+        val isRotated = image.imageInfo.rotationDegrees % 180 != 0
+        val physicalFrameWidthMm = if (isRotated) {
+            sensorSize.height * crop.height() / image.height
+        } else {
+            sensorSize.width * crop.width() / image.width
+        }
+        if (!physicalFrameWidthMm.isFinite() || physicalFrameWidthMm <= 0f) return null
+        return focalMm * frameWidth / physicalFrameWidthMm
+    }
+
+    private fun scheduleMarkerScan(
+        frame: Bitmap,
+        result: FrameResult,
+        focalPixels: Float,
+    ) {
+        if (!markerScanPending.compareAndSet(false, true)) return
+        val scale = min(1f, MAX_MARKER_SCAN_PIXELS / maxOf(frame.width, frame.height).toFloat())
+        val scanWidth = (frame.width * scale).toInt().coerceAtLeast(1)
+        val scanHeight = (frame.height * scale).toInt().coerceAtLeast(1)
+        val resized = Bitmap.createScaledBitmap(frame, scanWidth, scanHeight, true)
+        val scanBitmap = if (resized === frame) {
+            frame.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            resized
+        }
+
+        try {
+            markerScanner.process(InputImage.fromBitmap(scanBitmap, 0))
+                .addOnCompleteListener(markerExecutor) { task ->
+                    try {
+                        if (task.isSuccessful) {
+                            val marker = task.result.firstOrNull {
+                                it.format == Barcode.FORMAT_QR_CODE &&
+                                    it.rawValue == CalibrationMarker.PAYLOAD
+                            }
+                            if (marker != null) {
+                                calibrateFromMarker(
+                                    marker,
+                                    result,
+                                    frame.width,
+                                    frame.height,
+                                    scanWidth,
+                                    scanHeight,
+                                    focalPixels,
+                                )
+                            }
+                        } else {
+                            android.util.Log.w(TAG, "QR calibration scan failed.", task.exception)
+                        }
+                    } catch (error: Exception) {
+                        android.util.Log.w(TAG, "QR calibration sample rejected.", error)
+                    } finally {
+                        scanBitmap.recycle()
+                        markerScanPending.set(false)
+                    }
+                }
+        } catch (error: Exception) {
+            scanBitmap.recycle()
+            markerScanPending.set(false)
+            android.util.Log.w(TAG, "QR calibration scan could not start.", error)
+        }
+    }
+
+    private fun calibrateFromMarker(
+        marker: Barcode,
+        result: FrameResult,
+        frameWidth: Int,
+        frameHeight: Int,
+        scanWidth: Int,
+        scanHeight: Int,
+        focalPixels: Float,
+    ) {
+        val corners = marker.cornerPoints?.takeIf { it.size == 4 } ?: return
+        val scaleX = frameWidth.toFloat() / scanWidth
+        val scaleY = frameHeight.toFloat() / scanHeight
+        val points = corners.map { PointF(it.x * scaleX, it.y * scaleY) }
+        val sideLengths = points.indices.map { index ->
+            val first = points[index]
+            val second = points[(index + 1) % points.size]
+            hypot((second.x - first.x).toDouble(), (second.y - first.y).toDouble()).toFloat()
+        }
+        val shortestSide = sideLengths.minOrNull() ?: return
+        val longestSide = sideLengths.maxOrNull() ?: return
+        if (shortestSide <= 4f || longestSide / shortestSide > MAX_MARKER_SIDE_RATIO) return
+
+        val markerPixels = sideLengths.average().toFloat()
+        val actualMeters = focalPixels * CalibrationMarker.SIDE_METERS / markerPixels
+        if (!actualMeters.isFinite() || actualMeters !in MIN_MARKER_DISTANCE..MAX_MARKER_DISTANCE) return
+
+        val centerX = points.map { it.x }.average().toFloat()
+        val centerY = points.map { it.y }.average().toFloat()
+        val halfSampleSize = markerPixels * MARKER_SAMPLE_FRACTION
+        val depthScaleX = result.depthWidth / frameWidth.toFloat()
+        val depthScaleY = result.depthHeight / frameHeight.toFloat()
+        val modelMeters = DepthMath.sampleMedianInBox(
+            result.metricDepth,
+            result.depthWidth,
+            result.depthHeight,
+            (centerX - halfSampleSize) * depthScaleX,
+            (centerY - halfSampleSize) * depthScaleY,
+            (centerX + halfSampleSize) * depthScaleX,
+            (centerY + halfSampleSize) * depthScaleY,
+        ) ?: return
+
+        val fit = markerAutoCalibrator.observe(actualMeters, modelMeters)
+        if (fit == null) {
+            runOnUiThread {
+                if (markerCalibrationEnabled) {
+                    calibrationSummaryView.text = String.format(
+                        Locale.US,
+                        "Marker %.2f m | depth mentah %.2f m | %s",
+                        actualMeters,
+                        modelMeters,
+                        markerAutoCalibrator.statusText(),
+                    )
+                }
+            }
+            return
+        }
+
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastAutoCalibrationSaveMs < AUTO_CALIBRATION_SAVE_INTERVAL_MS) return
+        lastAutoCalibrationSaveMs = now
+        depthCalibration = fit.calibration
+        inferenceEngine?.resetDistanceSmoothing()
+        calibrationPreferences.edit()
+            .putFloat(CALIBRATION_A, fit.calibration.a)
+            .putFloat(CALIBRATION_B, fit.calibration.b)
+            .putString(CALIBRATION_PAIRS, LinearDepthCalibration.serializePairs(fit.pairs))
+            .apply()
+        val pairsText = LinearDepthCalibration.serializePairs(fit.pairs)
+        runOnUiThread {
+            if (markerCalibrationEnabled) {
+                calibrationPairsInput.setText(pairsText)
+                calibrationSummaryView.text = String.format(
+                    Locale.US,
+                    "Auto QR: y = %.4f × model + %.4f m · R² %.2f · galat %.2f m · %d jarak",
+                    fit.calibration.a,
+                    fit.calibration.b,
+                    fit.rSquared,
+                    fit.rmseMeters,
+                    fit.pairs.size,
+                )
+                statusView.text = "Kalibrasi otomatis diperbarui dari marker QR 10 cm."
+            }
+        }
     }
 
     private fun nextFps(): Float {
@@ -529,14 +769,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
             )
         }
         redrawLatest()
-        val decodeNote = if (config.detectorDecodeVerified) {
-            "decode ditandai terverifikasi"
-        } else {
-            "decode/NMS BELUM diverifikasi PC"
-        }
         statusView.text = String.format(
             Locale.US,
-            "%.1f FPS · %.1f ms · %d box · score %.2f · %d > conf · %d pre-NMS · %s · %s · %s",
+            "%.1f FPS ? %.1f ms ? %d box ? score %.2f ? %d > conf ? %d output model ? %s ? %s",
             result.fps,
             result.inferenceLatencyMs,
             result.detections.size,
@@ -545,7 +780,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
             result.detectorValidBeforeNms,
             if (result.detectorCoordinatesNormalized) "norm" else "px",
             result.runtimeLabel,
-            decodeNote,
         )
     }
 
@@ -556,6 +790,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             latestDepthBitmap,
             showDepthOverlay && !sideBySide,
             tapPoint,
+            tapMeasurement?.modelMeters,
             tapMeasurement?.calibratedMeters,
         )
         result.detections
@@ -585,15 +820,17 @@ class MainActivity : androidx.activity.ComponentActivity() {
         value.split(",")
             .map { it.trim().lowercase(Locale.ROOT) }
             .filter { it.isNotEmpty() }
+            .map { if (it == "laptop") "computer" else it }
             .toSet()
 
     private fun classFilterStatus(classes: Set<String>): String {
         if (classes.isEmpty()) return "Filter kelas dikosongkan; menampilkan semua kelas."
-        val unknown = classes - CocoLabels.names.toSet()
+        val knownClasses = config.classNames.map { it.lowercase(Locale.ROOT) }.toSet()
+        val unknown = classes - knownClasses
         return if (unknown.isEmpty()) {
             "Filter aktif: ${classes.joinToString()}"
         } else {
-            "Nama kelas COCO tidak dikenal: ${unknown.joinToString()}"
+            "Kelas tidak dikenal pada model: ${unknown.joinToString()}"
         }
     }
 
@@ -630,10 +867,43 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
     }
 
+    private fun resetCalibrationToRaw() {
+        val saved = calibrationPreferences.edit()
+            .putFloat(CALIBRATION_A, 1f)
+            .putFloat(CALIBRATION_B, 0f)
+            .putString(CALIBRATION_PAIRS, "")
+            .commit()
+        if (!saved) {
+            statusView.text = "Reset kalibrasi gagal disimpan."
+            return
+        }
+        depthCalibration = LinearDepthCalibration.IDENTITY
+        markerAutoCalibrator.reset()
+        calibrationPairsInput.text.clear()
+        inferenceEngine?.resetDistanceSmoothing()
+        tapMeasurement = null
+        calibrationSummaryView.text = calibrationDescription(0)
+        redrawLatest()
+        statusView.text = "Kalibrasi direset; jarak menampilkan nilai model mentah."
+    }
+
+    private fun exportCalibrationMarker(uri: Uri) {
+        try {
+            val output = contentResolver.openOutputStream(uri)
+                ?: throw IOException("File marker tujuan tidak dapat dibuka.")
+            output.use { CalibrationMarker.writePdf(it) }
+            statusView.text = "PDF marker QR disimpan. Cetak ukuran sebenarnya/100%, tanpa fit-to-page."
+        } catch (error: Exception) {
+            android.util.Log.e(TAG, "Gagal menulis marker kalibrasi.", error)
+            statusView.text = "Ekspor marker gagal: ${error.message}"
+        }
+    }
+
     private fun calibrationDescription(pairCount: Int? = null): String {
         val count = pairCount ?: LinearDepthCalibration.parsePairs(
             calibrationPreferences.getString(CALIBRATION_PAIRS, "").orEmpty(),
         ).size
+        if (count == 0) return "Jarak model mentah (belum dikalibrasi)"
         return String.format(
             Locale.US,
             "Jarak = %.4f × model + %.4f m · %d pasangan tersimpan",
@@ -709,19 +979,28 @@ class MainActivity : androidx.activity.ComponentActivity() {
         try {
             inferenceEngine?.close()
         } catch (error: Exception) {
-            android.util.Log.w(TAG, "Gagal menutup interpreter TFLite dengan bersih.", error)
+            android.util.Log.w(TAG, "Gagal menutup sesi ONNX Runtime dengan bersih.", error)
         }
         if (::cameraExecutor.isInitialized) cameraExecutor.shutdown()
+        if (::markerScanner.isInitialized) markerScanner.close()
+        if (::markerExecutor.isInitialized) markerExecutor.shutdown()
         latestDepthBitmap?.recycle()
     }
 
     companion object {
         private const val TAG = "Yolo26Depth"
-        private const val DEFAULT_CONFIDENCE = 0.25f
+        private const val DEFAULT_CONFIDENCE = 0.05f
         private const val MAX_CONFIDENCE = 0.80f
         private const val CALIBRATION_PREFERENCES = "linear_depth_calibration"
         private const val CALIBRATION_A = "a"
         private const val CALIBRATION_B = "b"
         private const val CALIBRATION_PAIRS = "pairs"
+        private const val CALIBRATION_PROFILE_VERSION = "profile_version"
+        private const val MAX_MARKER_SCAN_PIXELS = 960f
+        private const val MAX_MARKER_SIDE_RATIO = 1.35f
+        private const val MARKER_SAMPLE_FRACTION = 0.20f
+        private const val MIN_MARKER_DISTANCE = 0.25f
+        private const val MAX_MARKER_DISTANCE = 8f
+        private const val AUTO_CALIBRATION_SAVE_INTERVAL_MS = 1500L
     }
 }
