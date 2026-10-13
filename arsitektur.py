@@ -1,194 +1,156 @@
-"""Independent PyTorch blueprint inspired by the shared detection/depth diagram.
+"""Untrained YOLO26n-Depth architecture based on Sections 3.1 and 3.2.
 
-This is a new, untrained implementation. It does not recreate the trained ONNX
-weights or guarantee internal layer-for-layer compatibility with that export.
+This model is independent of the trained ONNX model used by the camera app.
 """
 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
 
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
 
-def _scaled_channels(channels: int, width_mult: float) -> int:
-    return max(8, int(round(channels * width_mult / 8) * 8))
+def _scaled_channels(
+    base_channels: int,
+    width_mult: float,
+    minimum: int,
+    max_channels: int,
+) -> int:
+    return max(minimum, min(int(base_channels * width_mult), max_channels))
 
 
-def _scaled_repeats(repeats: int, depth_mult: float) -> int:
-    return max(1, int(round(repeats * depth_mult)))
-
-
-def _attention_heads(channels: int) -> int:
-    return max(1, min(4, channels // 32))
-
-
-class ConvBNAct(nn.Module):
-    """Conv2d + BatchNorm + SiLU block used throughout the blueprint."""
+class ConvBlock(nn.Module):
+    """Convolution, batch normalization, and SiLU activation."""
 
     def __init__(
         self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int = 3,
-        stride: int = 1,
-        groups: int = 1,
+        in_ch: int,
+        out_ch: int,
+        k: int = 3,
+        s: int = 1,
+        p: int | None = None,
+        g: int = 1,
     ) -> None:
         super().__init__()
+        padding = k // 2 if p is None else p
         self.conv = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride,
-            padding=kernel_size // 2,
-            groups=groups,
+            in_ch,
+            out_ch,
+            kernel_size=k,
+            stride=s,
+            padding=padding,
+            groups=g,
             bias=False,
         )
-        self.bn = nn.BatchNorm2d(out_channels)
-        self.act = nn.SiLU(inplace=True)
+        self.bn = nn.BatchNorm2d(out_ch)
+        self.act = nn.SiLU()
 
     def forward(self, x: Tensor) -> Tensor:
         return self.act(self.bn(self.conv(x)))
 
 
 class Bottleneck(nn.Module):
-    def __init__(self, channels: int) -> None:
+    """Two-convolution residual block."""
+
+    def __init__(self, ch: int) -> None:
         super().__init__()
-        self.layers = nn.Sequential(
-            ConvBNAct(channels, channels, 3),
-            ConvBNAct(channels, channels, 3),
-        )
+        self.cv1 = ConvBlock(ch, ch, k=3, s=1, p=1)
+        self.cv2 = ConvBlock(ch, ch, k=3, s=1, p=1)
 
     def forward(self, x: Tensor) -> Tensor:
-        return x + self.layers(x)
+        return x + self.cv2(self.cv1(x))
 
 
 class C3k2(nn.Module):
-    """Two-branch C3k2-style block with a compact bottleneck path."""
+    """Split-feature C3k2 block with a stack of residual bottlenecks."""
 
-    def __init__(self, in_channels: int, out_channels: int, repeats: int = 1) -> None:
+    def __init__(self, c1: int, c2: int, n: int = 1) -> None:
         super().__init__()
-        hidden = max(8, out_channels // 2)
-        self.branch_a = ConvBNAct(in_channels, hidden, 1)
-        self.branch_b = ConvBNAct(in_channels, hidden, 1)
-        self.blocks = nn.Sequential(*(Bottleneck(hidden) for _ in range(repeats)))
-        self.fuse = ConvBNAct(hidden * 2, out_channels, 1)
+        if n < 1:
+            raise ValueError("C3k2 repeat count must be positive.")
+        hidden = max(1, c2 // 2)
+        self.cv1 = ConvBlock(c1, hidden, k=1, s=1, p=0)
+        self.cv2 = ConvBlock(c1, hidden, k=1, s=1, p=0)
+        self.blocks = nn.Sequential(*(Bottleneck(hidden) for _ in range(n)))
+        self.cv3 = ConvBlock(2 * hidden, c2, k=1, s=1, p=0)
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.fuse(torch.cat((self.branch_a(x), self.blocks(self.branch_b(x))), dim=1))
-
-
-class SpatialAttention(nn.Module):
-    def __init__(self, channels: int) -> None:
-        super().__init__()
-        heads = _attention_heads(channels)
-        while channels % heads:
-            heads -= 1
-        self.heads = heads
-        self.head_channels = channels // heads
-        self.scale = self.head_channels**-0.5
-        self.qkv = nn.Conv2d(channels, channels * 3, 1, bias=False)
-        self.projection = nn.Conv2d(channels, channels, 1, bias=False)
-
-    def forward(self, x: Tensor) -> Tensor:
-        batch, channels, height, width = x.shape
-        tokens = height * width
-        qkv = self.qkv(x).reshape(
-            batch, 3, self.heads, self.head_channels, tokens
-        )
-        query, key, value = qkv.unbind(dim=1)
-        query = query.transpose(-2, -1)
-        key = key.transpose(-2, -1)
-        value = value.transpose(-2, -1)
-        weights = torch.matmul(query, key.transpose(-2, -1)) * self.scale
-        attended = torch.matmul(weights.softmax(dim=-1), value)
-        attended = attended.transpose(-2, -1).reshape(batch, channels, height, width)
-        return self.projection(attended)
-
-
-class PSABlock(nn.Module):
-    def __init__(self, channels: int) -> None:
-        super().__init__()
-        self.attention = SpatialAttention(channels)
-        self.feed_forward = nn.Sequential(
-            ConvBNAct(channels, channels * 2, 1),
-            nn.Conv2d(channels * 2, channels, 1, bias=False),
-            nn.BatchNorm2d(channels),
-        )
-        self.act = nn.SiLU(inplace=True)
-
-    def forward(self, x: Tensor) -> Tensor:
-        x = x + self.attention(x)
-        return self.act(x + self.feed_forward(x))
+        branch_a = self.cv1(x)
+        branch_b = self.blocks(self.cv2(x))
+        return self.cv3(torch.cat((branch_a, branch_b), dim=1))
 
 
 class C2PSA(nn.Module):
-    """Partial self-attention block on the high-level backbone feature."""
+    """Channel gate used for C2PSA in the report's Section 3.2 implementation."""
 
-    def __init__(self, in_channels: int, out_channels: int, repeats: int = 1) -> None:
+    def __init__(self, c1: int, c2: int) -> None:
         super().__init__()
-        hidden = max(8, out_channels // 2)
-        self.project_in = ConvBNAct(in_channels, hidden * 2, 1)
-        self.attention_blocks = nn.Sequential(*(PSABlock(hidden) for _ in range(repeats)))
-        self.project_out = ConvBNAct(hidden * 2, out_channels, 1)
+        self.cv1 = ConvBlock(c1, c2, k=1, s=1, p=0)
+        hidden = max(1, c2 // 4)
+        self.attn = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(c2, hidden, 1),
+            nn.SiLU(),
+            nn.Conv2d(hidden, c2, 1),
+            nn.Sigmoid(),
+        )
 
     def forward(self, x: Tensor) -> Tensor:
-        bypass, attended = self.project_in(x).chunk(2, dim=1)
-        return self.project_out(torch.cat((bypass, self.attention_blocks(attended)), dim=1))
+        features = self.cv1(x)
+        return features * self.attn(features)
 
 
 class SPPF(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int = 5) -> None:
+    """Fast spatial pyramid pooling with three serial max-pooling passes."""
+
+    def __init__(self, in_ch: int, out_ch: int, k: int = 5) -> None:
         super().__init__()
-        hidden = max(8, in_channels // 2)
-        self.reduce = ConvBNAct(in_channels, hidden, 1)
-        self.pool = nn.MaxPool2d(kernel_size, stride=1, padding=kernel_size // 2)
-        self.fuse = ConvBNAct(hidden * 4, out_channels, 1)
+        hidden_ch = max(1, in_ch // 2)
+        self.cv1 = ConvBlock(in_ch, hidden_ch, k=1, s=1, p=0)
+        self.cv2 = ConvBlock(hidden_ch * 4, out_ch, k=1, s=1, p=0)
+        self.pool = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.reduce(x)
-        pooled_1 = self.pool(x)
-        pooled_2 = self.pool(pooled_1)
-        pooled_3 = self.pool(pooled_2)
-        return self.fuse(torch.cat((x, pooled_1, pooled_2, pooled_3), dim=1))
+        x = self.cv1(x)
+        y1 = self.pool(x)
+        y2 = self.pool(y1)
+        y3 = self.pool(y2)
+        return self.cv2(torch.cat((x, y1, y2, y3), dim=1))
 
 
 class Backbone(nn.Module):
-    """Stem and P2/4-P5/32 stages, including SPPF then C2PSA at P5."""
+    """Build hierarchical P2/4-P5/32 features from the report's backbone."""
 
-    def __init__(self, channels: Sequence[int], repeats: Sequence[int]) -> None:
+    def __init__(
+        self,
+        c_stem: int,
+        channels: tuple[int, int, int, int],
+        n_repeat: int,
+    ) -> None:
         super().__init__()
-        c2, c3, c4, c5 = channels
-        r2, r3, r4, r5 = repeats
-        self.stem = ConvBNAct(3, max(8, c2 // 2), 3, 2)
-        self.stage_p2 = nn.Sequential(
-            ConvBNAct(max(8, c2 // 2), c2, 3, 2),
-            C3k2(c2, c2, r2),
+        c_p2, c_p3, c_p4, c_p5 = channels
+        self.stem = ConvBlock(3, c_stem, k=3, s=2, p=1)
+        self.l2 = nn.Sequential(
+            ConvBlock(c_stem, c_p2, k=3, s=2, p=1),
+            C3k2(c_p2, c_p2, n=n_repeat),
         )
-        self.stage_p3 = nn.Sequential(
-            ConvBNAct(c2, c3, 3, 2),
-            C3k2(c3, c3, r3),
-        )
-        self.stage_p4 = nn.Sequential(
-            ConvBNAct(c3, c4, 3, 2),
-            C3k2(c4, c4, r4),
-        )
-        self.stage_p5 = nn.Sequential(
-            ConvBNAct(c4, c5, 3, 2),
-            C3k2(c5, c5, r5),
-            SPPF(c5, c5),
-            C2PSA(c5, c5),
-        )
+        self.l3 = ConvBlock(c_p2, c_p3, k=3, s=2, p=1)
+        self.l4 = C3k2(c_p3, c_p3, n=n_repeat)
+        self.l5 = ConvBlock(c_p3, c_p4, k=3, s=2, p=1)
+        self.l6 = C3k2(c_p4, c_p4, n=n_repeat)
+        self.l7 = ConvBlock(c_p4, c_p5, k=3, s=2, p=1)
+        self.l8 = C3k2(c_p5, c_p5, n=n_repeat)
+        self.l9 = SPPF(c_p5, c_p5, k=5)
+        self.l10 = C2PSA(c_p5, c_p5)
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        p2 = self.stage_p2(self.stem(x))
-        p3 = self.stage_p3(p2)
-        p4 = self.stage_p4(p3)
-        p5 = self.stage_p5(p4)
-        return p2, p3, p4, p5
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        x = self.l2(self.stem(x))
+        p3 = self.l4(self.l3(x))
+        p4 = self.l6(self.l5(p3))
+        p5 = self.l10(self.l9(self.l8(self.l7(p4))))
+        return p3, p4, p5
 
 
 def _upsample_like(x: Tensor, reference: Tensor) -> Tensor:
@@ -196,262 +158,180 @@ def _upsample_like(x: Tensor, reference: Tensor) -> Tensor:
 
 
 class Neck(nn.Module):
-    """Top-down FPN followed by bottom-up PAN, returning P3/P4/P5."""
+    """Top-down FPN and bottom-up PAN producing P3_out, P4_out, and P5_out."""
 
-    def __init__(self, channels: Sequence[int], repeats: int) -> None:
+    def __init__(self, channels: tuple[int, int, int], n_repeat: int) -> None:
         super().__init__()
-        c3, c4, c5 = channels
-        self.fpn_p4 = C3k2(c5 + c4, c4, repeats)
-        self.fpn_p3 = C3k2(c4 + c3, c3, repeats)
-        self.pan_p4_down = ConvBNAct(c3, c3, 3, 2)
-        self.pan_p4 = C3k2(c3 + c4, c4, repeats)
-        self.pan_p5_down = ConvBNAct(c4, c4, 3, 2)
-        self.pan_p5 = C3k2(c4 + c5, c5, repeats)
+        c_p3, c_p4, c_p5 = channels
+        self.n13 = C3k2(c_p5 + c_p4, c_p4, n=n_repeat)
+        self.n16 = C3k2(c_p4 + c_p3, c_p3, n=n_repeat)
+        self.d17 = ConvBlock(c_p3, c_p3, k=3, s=2, p=1)
+        self.n19 = C3k2(c_p3 + c_p4, c_p4, n=n_repeat)
+        self.d20 = ConvBlock(c_p4, c_p4, k=3, s=2, p=1)
+        self.n22 = C3k2(c_p4 + c_p5, c_p5, n=n_repeat)
 
     def forward(
         self, p3: Tensor, p4: Tensor, p5: Tensor
     ) -> tuple[Tensor, Tensor, Tensor]:
-        fpn_p4 = self.fpn_p4(torch.cat((_upsample_like(p5, p4), p4), dim=1))
-        fpn_p3 = self.fpn_p3(torch.cat((_upsample_like(fpn_p4, p3), p3), dim=1))
-        pan_p4 = self.pan_p4(torch.cat((self.pan_p4_down(fpn_p3), fpn_p4), dim=1))
-        pan_p5 = self.pan_p5(torch.cat((self.pan_p5_down(pan_p4), p5), dim=1))
-        return fpn_p3, pan_p4, pan_p5
-
-
-class DetectionLevel(nn.Module):
-    def __init__(self, channels: int, num_classes: int) -> None:
-        super().__init__()
-        self.box = nn.Sequential(
-            ConvBNAct(channels, channels, 3),
-            nn.Conv2d(channels, 4, 1),
-        )
-        self.classes = nn.Sequential(
-            ConvBNAct(channels, channels, 3),
-            nn.Conv2d(channels, num_classes, 1),
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        return torch.cat((self.box(x), self.classes(x)), dim=1)
+        p4_fused = self.n13(torch.cat((_upsample_like(p5, p4), p4), dim=1))
+        p3_out = self.n16(torch.cat((_upsample_like(p4_fused, p3), p3), dim=1))
+        p4_out = self.n19(torch.cat((self.d17(p3_out), p4_fused), dim=1))
+        p5_out = self.n22(torch.cat((self.d20(p4_out), p5), dim=1))
+        return p3_out, p4_out, p5_out
 
 
 class DetectionHead(nn.Module):
-    """Separate one-to-many/one-to-one branches; decode only one-to-one in eval."""
+    """Report-style independent bounding-box regression and class branches."""
 
-    def __init__(
-        self,
-        channels: Sequence[int],
-        num_classes: int,
-        max_detections: int,
-    ) -> None:
+    def __init__(self, in_ch: int, num_classes: int = 4) -> None:
         super().__init__()
-        self.num_classes = num_classes
-        self.max_detections = max_detections
-        self.strides = (8, 16, 32)
-        self.one_to_many = nn.ModuleList(
-            DetectionLevel(channel, num_classes) for channel in channels
+        if num_classes < 1:
+            raise ValueError("num_classes must be positive.")
+        self.reg = nn.Sequential(
+            ConvBlock(in_ch, in_ch, k=3, s=1, p=1),
+            nn.Conv2d(in_ch, 4, kernel_size=1),
         )
-        self.one_to_one = nn.ModuleList(
-            DetectionLevel(channel, num_classes) for channel in channels
+        self.cls = nn.Sequential(
+            ConvBlock(in_ch, in_ch, k=3, s=1, p=1),
+            nn.Conv2d(in_ch, num_classes, kernel_size=1),
         )
 
-    def forward(
-        self, features: Sequence[Tensor], input_hw: tuple[int, int]
-    ) -> dict[str, list[Tensor] | Tensor]:
-        one_to_one_features = (
-            [feature.detach() for feature in features] if self.training else features
-        )
-        one_to_one = [
-            head(feature)
-            for head, feature in zip(self.one_to_one, one_to_one_features)
-        ]
-        if self.training:
-            one_to_many = [
-                head(feature) for head, feature in zip(self.one_to_many, features)
-            ]
-            return {
-                "one_to_many": one_to_many,
-                "one_to_one": one_to_one,
-            }
-        return {"decoded": self._decode(one_to_one, input_hw)}
-
-    def _decode(
-        self, raw_outputs: Sequence[Tensor], input_hw: tuple[int, int]
-    ) -> Tensor:
-        all_boxes: list[Tensor] = []
-        all_scores: list[Tensor] = []
-        for raw, stride in zip(raw_outputs, self.strides):
-            batch, _, height, width = raw.shape
-            box_logits, class_logits = raw.split((4, self.num_classes), dim=1)
-            distances = F.softplus(box_logits).permute(0, 2, 3, 1).reshape(
-                batch, height * width, 4
-            ) * stride
-            class_scores = class_logits.sigmoid().permute(0, 2, 3, 1).reshape(
-                batch, height * width, self.num_classes
-            )
-            grid_y, grid_x = torch.meshgrid(
-                torch.arange(height, device=raw.device, dtype=raw.dtype),
-                torch.arange(width, device=raw.device, dtype=raw.dtype),
-                indexing="ij",
-            )
-            centers = torch.stack((grid_x + 0.5, grid_y + 0.5), dim=-1)
-            centers = centers.reshape(1, height * width, 2) * stride
-            top_left = centers - distances[..., :2]
-            bottom_right = centers + distances[..., 2:]
-            boxes = torch.cat((top_left, bottom_right), dim=-1)
-            all_boxes.append(boxes)
-            all_scores.append(class_scores)
-
-        boxes = torch.cat(all_boxes, dim=1)
-        scores = torch.cat(all_scores, dim=1)
-        flat_scores, flat_indices = scores.flatten(1).topk(
-            min(self.max_detections, scores.shape[1] * scores.shape[2]), dim=1
-        )
-        box_indices = torch.div(flat_indices, self.num_classes, rounding_mode="floor")
-        class_ids = flat_indices.remainder(self.num_classes).to(boxes.dtype)
-        selected_boxes = boxes.gather(
-            1, box_indices.unsqueeze(-1).expand(-1, -1, 4)
-        )
-        input_height, input_width = input_hw
-        selected_boxes[..., (0, 2)] = selected_boxes[..., (0, 2)].clamp(
-            0, input_width
-        )
-        selected_boxes[..., (1, 3)] = selected_boxes[..., (1, 3)].clamp(
-            0, input_height
-        )
-        return torch.cat(
-            (selected_boxes, flat_scores.unsqueeze(-1), class_ids.unsqueeze(-1)),
-            dim=-1,
-        )
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        return self.reg(x), self.cls(x)
 
 
 class DepthHead(nn.Module):
-    """Fuse neck features with P2 and predict a positive full-resolution depth map."""
+    """Fuse P3/P4/P5 at input resolution into a relative depth map in [0, 1]."""
 
-    def __init__(
-        self,
-        p2_channels: int,
-        neck_channels: Sequence[int],
-        hidden_channels: int,
-        max_depth_m: float,
-    ) -> None:
+    def __init__(self, channels: tuple[int, int, int]) -> None:
         super().__init__()
-        c3, c4, c5 = neck_channels
-        self.max_depth_m = max_depth_m
-        self.project_p5 = ConvBNAct(c5, hidden_channels, 1)
-        self.project_p4 = ConvBNAct(c4, hidden_channels, 1)
-        self.project_p3 = ConvBNAct(c3, hidden_channels, 1)
-        self.project_p2 = ConvBNAct(p2_channels, hidden_channels, 1)
-        self.fuse_p4 = ConvBNAct(hidden_channels, hidden_channels, 3)
-        self.fuse_p3 = ConvBNAct(hidden_channels, hidden_channels, 3)
-        self.fuse_p2 = ConvBNAct(hidden_channels, hidden_channels, 3)
-        self.refine = ConvBNAct(hidden_channels, hidden_channels, 3)
-        self.output = nn.Conv2d(hidden_channels, 1, 1)
+        self.conv_p3 = ConvBlock(channels[0], 32, k=1, s=1, p=0)
+        self.conv_p4 = ConvBlock(channels[1], 32, k=1, s=1, p=0)
+        self.conv_p5 = ConvBlock(channels[2], 32, k=1, s=1, p=0)
+        self.refine = nn.Sequential(
+            ConvBlock(32 * 3, 32, k=3, s=1, p=1),
+            ConvBlock(32, 16, k=3, s=1, p=1),
+            nn.Conv2d(16, 1, kernel_size=1),
+            nn.Sigmoid(),
+        )
 
     def forward(
-        self,
-        p2: Tensor,
-        features: Sequence[Tensor],
-        output_hw: tuple[int, int],
+        self, features: tuple[Tensor, Tensor, Tensor], target_size: tuple[int, int]
     ) -> Tensor:
         p3, p4, p5 = features
-        x = self.project_p5(p5)
-        x = self.fuse_p4(_upsample_like(x, p4) + self.project_p4(p4))
-        x = self.fuse_p3(_upsample_like(x, p3) + self.project_p3(p3))
-        x = self.fuse_p2(_upsample_like(x, p2) + self.project_p2(p2))
-        x = self.refine(x)
-        x = F.interpolate(x, size=output_hw, mode="bilinear", align_corners=False)
-        return self.output(x).sigmoid() * self.max_depth_m
+        up_p3 = F.interpolate(
+            self.conv_p3(p3),
+            size=target_size,
+            mode="bilinear",
+            align_corners=False,
+        )
+        up_p4 = F.interpolate(
+            self.conv_p4(p4),
+            size=target_size,
+            mode="bilinear",
+            align_corners=False,
+        )
+        up_p5 = F.interpolate(
+            self.conv_p5(p5),
+            size=target_size,
+            mode="bilinear",
+            align_corners=False,
+        )
+        return self.refine(torch.cat((up_p3, up_p4, up_p5), dim=1))
 
 
-class YOLO26nMultitaskBlueprint(nn.Module):
-    """Diagram-inspired detector plus monocular-depth model, without pretrained weights."""
+class YOLO26nDepth(nn.Module):
+    """Report-aligned detector/depth blueprint; it has no trained weights."""
 
     def __init__(
         self,
         num_classes: int = 4,
-        max_detections: int = 300,
         width_mult: float = 0.25,
-        depth_mult: float = 0.5,
-        max_depth_m: float = 10.0,
+        depth_mult: float = 0.50,
+        max_channels: int = 1024,
     ) -> None:
         super().__init__()
-        if num_classes < 1 or max_detections < 1:
-            raise ValueError("num_classes and max_detections must be positive.")
-        if width_mult <= 0 or depth_mult <= 0 or max_depth_m <= 0:
-            raise ValueError("width_mult, depth_mult, and max_depth_m must be positive.")
+        if num_classes < 1:
+            raise ValueError("num_classes must be positive.")
+        if width_mult <= 0 or depth_mult <= 0 or max_channels < 1:
+            raise ValueError("Scaling factors and max_channels must be positive.")
 
-        channels = tuple(
-            _scaled_channels(base, width_mult) for base in (64, 128, 256, 512)
-        )
-        repeats = tuple(
-            _scaled_repeats(base, depth_mult) for base in (1, 2, 2, 1)
-        )
-        self.backbone = Backbone(channels, repeats)
-        neck_channels = channels[1:]
-        self.neck = Neck(neck_channels, _scaled_repeats(2, depth_mult))
-        self.detection_head = DetectionHead(
-            neck_channels, num_classes, max_detections
-        )
-        self.depth_head = DepthHead(
-            channels[0],
-            neck_channels,
-            hidden_channels=channels[1],
-            max_depth_m=max_depth_m,
-        )
+        c_stem = _scaled_channels(64, width_mult, 32, max_channels)
+        c_p2 = _scaled_channels(128, width_mult, 32, max_channels)
+        c_p3 = _scaled_channels(256, width_mult, 64, max_channels)
+        c_p4 = _scaled_channels(512, width_mult, 128, max_channels)
+        c_p5 = _scaled_channels(1024, width_mult, 256, max_channels)
+        n_repeat = max(1, round(2 * depth_mult))
 
-    def forward(self, images: Tensor) -> dict[str, Tensor | list[Tensor]]:
-        if images.ndim != 4 or images.shape[1] != 3:
-            raise ValueError("images must have shape [batch, 3, height, width].")
-        if images.shape[-2] < 32 or images.shape[-1] < 32:
-            raise ValueError("image height and width must each be at least 32.")
+        self.backbone = Backbone(
+            c_stem,
+            (c_p2, c_p3, c_p4, c_p5),
+            n_repeat,
+        )
+        self.neck = Neck((c_p3, c_p4, c_p5), n_repeat)
+        self.detect_p3 = DetectionHead(c_p3, num_classes)
+        self.detect_p4 = DetectionHead(c_p4, num_classes)
+        self.detect_p5 = DetectionHead(c_p5, num_classes)
+        self.depth_head = DepthHead((c_p3, c_p4, c_p5))
 
-        input_hw = (images.shape[-2], images.shape[-1])
-        p2, backbone_p3, backbone_p4, backbone_p5 = self.backbone(images)
-        features = self.neck(backbone_p3, backbone_p4, backbone_p5)
-        detection = self.detection_head(features, input_hw)
-        depth = self.depth_head(p2, features, input_hw)
-        if self.training:
-            return {
-                "det_one_to_many": detection["one_to_many"],
-                "det_one_to_one": detection["one_to_one"],
-                "depth": depth,
-            }
-        return {"det": detection["decoded"], "depth": depth}
+    def forward(self, x: Tensor) -> dict[str, Tensor]:
+        if x.ndim != 4 or x.shape[1] != 3:
+            raise ValueError("Input must have shape [batch, 3, height, width].")
+        if x.shape[-2] < 32 or x.shape[-1] < 32:
+            raise ValueError("Input height and width must each be at least 32.")
+        if x.shape[-2] % 32 or x.shape[-1] % 32:
+            raise ValueError("Input height and width must be divisible by 32.")
+
+        p3, p4, p5 = self.backbone(x)
+        p3_out, p4_out, p5_out = self.neck(p3, p4, p5)
+        p3_reg, p3_cls = self.detect_p3(p3_out)
+        p4_reg, p4_cls = self.detect_p4(p4_out)
+        p5_reg, p5_cls = self.detect_p5(p5_out)
+        depth_map = self.depth_head((p3_out, p4_out, p5_out), x.shape[-2:])
+        return {
+            "p3_bbox": p3_reg,
+            "p3_cls": p3_cls,
+            "p4_bbox": p4_reg,
+            "p4_cls": p4_cls,
+            "p5_bbox": p5_reg,
+            "p5_cls": p5_cls,
+            "depth": depth_map,
+        }
 
 
 def build_model(
     num_classes: int = 4,
-    max_detections: int = 300,
     width_mult: float = 0.25,
-    depth_mult: float = 0.5,
-) -> YOLO26nMultitaskBlueprint:
-    return YOLO26nMultitaskBlueprint(
+    depth_mult: float = 0.50,
+) -> YOLO26nDepth:
+    """Build the report's Nano-scale model for the project's four object classes."""
+    return YOLO26nDepth(
         num_classes=num_classes,
-        max_detections=max_detections,
         width_mult=width_mult,
         depth_mult=depth_mult,
+        max_channels=1024,
     )
 
 
 def _verify() -> None:
     model = build_model().eval()
-    images = torch.zeros(1, 3, 128, 160)
+    images = torch.zeros(1, 3, 640, 640)
     with torch.inference_mode():
         output = model(images)
     print(f"Input: {tuple(images.shape)}")
-    print(f"Detections: {tuple(output['det'].shape)}")
-    print(f"Depth: {tuple(output['depth'].shape)}")
+    for key in ("p3_bbox", "p3_cls", "p4_bbox", "p4_cls", "p5_bbox", "p5_cls", "depth"):
+        print(f"{key}: {tuple(output[key].shape)}")
     print(f"Parameters: {sum(parameter.numel() for parameter in model.parameters()):,}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Verify the untrained diagram-inspired PyTorch architecture."
+        description="Verify the report-aligned, untrained YOLO26n-Depth architecture."
     )
     parser.add_argument(
         "--verify",
         action="store_true",
-        help="Run a forward-pass smoke test on a small rectangular input.",
+        help="Run a forward pass on the report's 640x640 input size.",
     )
     args = parser.parse_args()
     if not args.verify:

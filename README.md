@@ -57,14 +57,40 @@ detection YOLO26n; aplikasi ini mempertahankan jalur tersebut sekaligus output
 depth tambahan. Nama blok internal pada diagram tidak didefinisikan ulang di
 `main.py`; saat runtime, implementasinya berasal dari graph ONNX terlatih.
 
-### Blueprint PyTorch terpisah
+### Implementasi arsitektur dari laporan
 
-`arsitektur.py` berisi rancangan mandiri yang mengikuti alur diagram: backbone
-C3k2 dengan SPPF/C2PSA, neck FPN+PAN, head deteksi one-to-many/one-to-one, dan
-depth head tambahan. Detail channel/repeat adalah konfigurasi blueprint karena
-diagram tidak memuat seluruh parameter internal. Model baru ini tidak memiliki
-bobot terlatih, bukan salinan layer persis model ONNX, dan tidak menggantikan
-model yang dipakai kamera.
+`arsitektur.py` menerapkan rancangan pada bagian 3.1-3.2 laporan sebagai model
+PyTorch terpisah:
+
+- Backbone ber-skala YOLO26n (`width_mult=0.25`, `depth_mult=0.50`,
+  `max_channels=1024`) menghasilkan fitur P3/8, P4/16, dan P5/32. Backbone
+  memakai Conv, C3k2, SPPF, lalu C2PSA dengan channel gate sesuai kode bagian
+  3.2 laporan. Sisipan attention opsional tambahan pada C3k2/neck tidak
+  diaktifkan.
+- Neck menggabungkan P3/P4/P5 dengan alur FPN top-down dan PAN bottom-up.
+- Tiga detection head terpisah menghasilkan tensor regresi bbox dan logits
+  kelas pada masing-masing skala. Ini adalah output mentah per skala; belum
+  didekode menjadi daftar kotak akhir.
+- DepthHead memproyeksikan fitur P3/P4/P5 masing-masing ke 32 channel,
+  mengubahnya ke ukuran input, menggabungkannya, lalu menghasilkan peta satu
+  channel melalui sigmoid. Nilainya relatif pada rentang `[0, 1]`, **bukan
+  jarak meter terkalibrasi**.
+
+Pemeriksaan `--verify` menggunakan input `[1, 3, 640, 640]`. Dengan empat kelas
+yang digunakan aplikasi, bentuk outputnya ialah P3 `[1, 4, 80, 80]`, P4
+`[1, 4, 40, 40]`, P5 `[1, 4, 20, 20]` untuk masing-masing bbox dan kelas, serta
+depth `[1, 1, 640, 640]`.
+
+Laporan menyebut 2.572.280 parameter dan 6,1 GFLOPs untuk baseline YOLO26n;
+angka itu merujuk ke baseline, bukan implementasi multitask khusus di file ini.
+Blueprint ini memiliki 3.766.825 parameter pada konfigurasi default yang
+diverifikasi. Bagian laporan juga membedakan output Detect baseline end-to-end
+dari contoh Section 3.2 yang mengeluarkan tensor mentah per skala; kode ini
+mengikuti struktur terperinci Section 3.2.
+
+Model PyTorch ini **belum dilatih dan tidak dipakai `main.py`**. Kamera tetap
+memakai ONNX multitask terlatih pada input 640×480, dengan depth dalam meter.
+Blueprint 640×640 ini bukan pengganti ONNX atau checkpoint terlatih.
 
 Opsional, pasang PyTorch lalu jalankan pemeriksaan forward pass:
 
