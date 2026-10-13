@@ -24,7 +24,8 @@ secara temporal.
   skala meter 1.0 dari konfigurasi, membuang padding letterbox, lalu sampling
   median depth di bagian tengah bbox.
 - Nama kelas dan urutannya ada di `app/src/main/assets/model_config.json` dan
-  sama dengan daftar 30 kelas di metadata training terbaru.
+  sama dengan metadata training terbaru: `person`, `laptop`, `cell phone`, dan
+  `bottle`.
 
 Android menggunakan satu sesi ONNX Runtime untuk meminta kedua output dalam
 satu inferensi per frame. Deteksi dan depth bukan lagi dua interpreter/model

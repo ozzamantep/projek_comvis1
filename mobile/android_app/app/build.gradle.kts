@@ -5,7 +5,7 @@ plugins {
 
 val multitaskModel = rootProject.projectDir
     .resolve(
-        "../../yolo26n_multitask_balanced_v1_20261013-095519-344395/" +
+        "../../yolo26n_multitask_coco4_v1_20261013-163528-539afa/" +
             "inference/multitask.onnx"
     )
 val generatedModelAssets = layout.buildDirectory.dir("generated/multitaskModelAssets")

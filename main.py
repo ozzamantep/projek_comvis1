@@ -26,11 +26,11 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 DEFAULT_MODEL_PATH = (
-    "yolo26n_multitask_balanced_v1_20261013-095519-344395/"
+    "yolo26n_multitask_coco4_v1_20261013-163528-539afa/"
     "inference/multitask.onnx"
 )
 DEFAULT_METADATA_PATH = (
-    "yolo26n_multitask_balanced_v1_20261013-095519-344395/"
+    "yolo26n_multitask_coco4_v1_20261013-163528-539afa/"
     "inference/model_metadata.json"
 )
 

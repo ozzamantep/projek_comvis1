@@ -9,9 +9,10 @@
   "depth_patch_size": 15,
   "ema_alpha": 0.35,
   "class_names": [
-    "chair", "table", "window", "door", "picture", "desk", "pillow", "box", "paper", "cabinet",
-    "books", "book", "shelf", "lamp", "bed", "bottle", "monitor", "sofa", "curtain", "bag",
-    "drawer", "light", "mirror", "keyboard", "sign", "couch", "cup", "counter", "dresser", "computer"
+    "person",
+    "laptop",
+    "cell phone",
+    "bottle"
   ],
   "detector_confidence": 0.05,
   "detector_max_detections": 300

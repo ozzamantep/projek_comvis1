@@ -4,21 +4,23 @@ Proyek ini memakai satu model YOLO26n multitask untuk depth metrik dan deteksi.
 Satu gambar mengalir melalui backbone YOLO26n dan neck FPN/PAN bersama, lalu
 bercabang ke detection head (kotak/kelas) dan depth head (peta jarak). Desktop
 dan Android menjalankan graph deployment yang sama dari hasil training terbaru,
-`yolo26n_multitask_balanced_v1_20261013-095519-344395/inference/multitask.onnx`,
+`yolo26n_multitask_coco4_v1_20261013-163528-539afa/inference/multitask.onnx`,
 sehingga deteksi dan depth dihasilkan oleh satu inferensi.
 
 Metadata kontrak model ada di folder `inference/` yang sama. Input ONNX adalah
 float32 NCHW `[1,3,480,640]`. Output `det` berbentuk
 `[1,300,6]` dan output `depth` berbentuk `[1,1,480,640]` dalam meter.
+Model deteksi ini memiliki empat kelas: `person`, `laptop`, `cell phone`, dan
+`bottle`.
 Validasi ekspor ONNX pada metadata menunjukkan perbedaan kecil dari PyTorch,
 tetapi pengukuran jarak tetap perlu diuji pada kamera target.
 
-Evaluasi export baru melaporkan pada split test: depth AbsRel `0.140`,
-RMSE `0.481 m`, delta1 `0.819`; deteksi mAP50 `0.313` dan mAP50-95 `0.208`.
-Angka ini berasal dari satu run dan split grouped, jadi tidak langsung sebanding
-dengan baseline validasi lama. Export memakai checkpoint balanced epoch 17;
-checkpoint depth epoch 25 punya AbsRel validasi lebih rendah, tetapi export
-deployment dipilih memakai metrik gabungan.
+Laporan run `coco4_v1` mencatat pada split test: depth AbsRel `0.160`,
+RMSE `0.542 m`, delta1 `0.770`; deteksi mAP50 `0.365` dan mAP50-95 `0.275`.
+Export deployment menggunakan checkpoint metrik gabungan epoch 10 dari training
+yang berhenti awal pada epoch 18. Angka ini berasal dari satu run dan split
+grouped, serta jumlah/kelas deteksinya berbeda dari run sebelumnya; jangan
+membandingkannya langsung dengan baseline validasi lama.
 
 ## Aplikasi web lokal
 

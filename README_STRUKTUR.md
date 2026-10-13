@@ -12,7 +12,7 @@ Kode aplikasi utama diringkas agar mudah ditemukan:
 - `pendukung/` berisi prototipe, contoh terpisah, runner alternatif, dan
   pemeriksa dataset MATLAB.
 - `mobile/export/` berisi alat ekspor model, terpisah dari aplikasi Android.
-- `yolo26n_multitask_balanced_v1_20261013-095519-344395/inference/` berisi
+- `yolo26n_multitask_coco4_v1_20261013-163528-539afa/inference/` berisi
   model ONNX deployment dan metadata hasil training terbaru. Model dan checkpoint
   tidak diduplikasi di source tree Android.
 
