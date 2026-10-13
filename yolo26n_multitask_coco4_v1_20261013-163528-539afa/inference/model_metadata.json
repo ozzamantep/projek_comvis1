@@ -1,11 +1,11 @@
 {
  "model": "YOLO26n multi-task (detection + monocular depth)",
- "run_id": "20261013-055923-2169a5",
- "experiment": "balanced_v1",
+ "run_id": "20261013-163528-539afa",
+ "experiment": "coco4_v1",
  "smoke": false,
  "partial": false,
  "training_status": "early_stopped",
- "epoch": 14,
+ "epoch": 10,
  "input": {
   "name": "images",
   "dtype": "float32",
@@ -49,50 +49,24 @@
  "depth_max_m": 10.0,
  "calibration": {
   "formula": "depth' = depth^a * exp(b) (sudah tertanam di model)",
-  "a": 1.0245676040649414,
-  "b": -0.01809610426425934
+  "a": 1.0551573038101196,
+  "b": -0.05629296228289604
  },
  "imgsz_hw": [
   480,
   640
  ],
  "class_names": [
-  "chair",
-  "table",
-  "window",
-  "door",
-  "picture",
-  "desk",
-  "pillow",
-  "box",
-  "paper",
-  "cabinet",
-  "books",
-  "book",
-  "shelf",
-  "lamp",
-  "bed",
-  "bottle",
-  "monitor",
-  "sofa",
-  "curtain",
-  "bag",
-  "drawer",
-  "light",
-  "mirror",
-  "keyboard",
-  "sign",
-  "couch",
-  "cup",
-  "counter",
-  "dresser",
-  "computer"
+  "person",
+  "laptop",
+  "cell phone",
+  "bottle"
  ],
  "label_mode": "sunrgbd",
  "onnx_validated": true,
  "onnx_check": {
-  "max_abs_diff_det_top20_scores": 2.7418136596679688e-06,
-  "max_abs_diff_depth_m": 4.291534423828125e-06,
+  "max_abs_diff_det_top20_scores": 9.266477718483657e-08,
+  "max_abs_diff_depth_m": 3.5762786865234375e-06,
   "det_shape": [
    1,
    300,
