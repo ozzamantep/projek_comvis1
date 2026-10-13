@@ -51,12 +51,13 @@ Untuk membuka kamera langsung di jendela desktop (tanpa browser), jalankan
 deteksi dan jarak tiap objek di kiri, peta depth dan jarak tiap objek di kanan.
 Jarak titik tengah juga ditampilkan di panel depth. Tekan `s` untuk mengganti
 tampilan, klik gambar untuk membaca jarak titik, dan `q` untuk keluar.
-Kamera memakai faktor kalibrasi `0.5503` dari tujuh pasangan pengukuran,
-termasuk pengukuran terbaru yang dicatat setelah faktor sebelumnya diterapkan.
-Faktor ini mengoreksi skala rata-rata saja, bukan respons jarak yang berubah
-secara tidak konsisten: bacaan 150 cm sebelumnya lebih kecil daripada bacaan
-100 cm. Jarak hasilnya masih perkiraan dan faktor ini khusus untuk setup kamera
-tersebut. Faktor dapat diganti dengan `--depth-scale`, misalnya
+Kamera memakai faktor kalibrasi `0.5000` (median rasio) dari sembilan pasangan
+pengukuran yang diberikan, termasuk pengukuran terbaru yang dicatat setelah
+faktor sebelumnya diterapkan. Faktor ini mengoreksi skala rata-rata saja, bukan
+respons jarak yang berubah secara tidak konsisten: bacaan 150 cm sebelumnya
+lebih kecil daripada bacaan 100 cm. Jarak hasilnya masih perkiraan dan faktor
+ini khusus untuk setup kamera tersebut. Faktor dapat diganti dengan
+`--depth-scale`, misalnya
 `.\.venv\Scripts\python.exe main.py camera --depth-scale 0.60`.
 
 `main.py` menjadi entry point aplikasi Python. `penting/` tetap berisi trainer,

@@ -21,11 +21,10 @@ class DepthUtilsTests(unittest.TestCase):
         )
         np.testing.assert_allclose(
             calibrated,
-            np.array([[0.880503, 0.935534, 0.990566]], dtype=np.float32),
-            rtol=1e-6,
+            np.array([[0.8, 0.85, 0.9]], dtype=np.float32),
         )
         self.assertAlmostEqual(
-            DEFAULT_CAMERA_DEPTH_SCALE, 0.5503144654, places=8
+            DEFAULT_CAMERA_DEPTH_SCALE, 0.5, places=8
         )
 
     def test_depth_calibration_rejects_non_positive_or_non_finite_scale(self):
