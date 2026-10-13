@@ -33,7 +33,7 @@ DEFAULT_METADATA_PATH = (
     "yolo26n_multitask_coco4_v1_20261013-163528-539afa/"
     "inference/model_metadata.json"
 )
-DEFAULT_CAMERA_DEPTH_SCALE = 7.0 / 12.0
+DEFAULT_CAMERA_DEPTH_SCALE = (7.0 / 12.0) * (1.0 / 1.06)
 
 # Depth application
 def meters_to_cm(meters: ArrayLike) -> NDArray[np.float32]:
@@ -1202,8 +1202,8 @@ def camera_main() -> None:
         type=float,
         default=DEFAULT_CAMERA_DEPTH_SCALE,
         help=(
-            "Kalibrasi skala webcam (default x0.5833 dari 4 pasangan "
-            "ukur yang diberikan; khusus setup kamera ini)."
+            "Kalibrasi skala webcam (default x0.5503 dari tujuh pasangan "
+            "ukur; khusus setup kamera ini)."
         ),
     )
     parser.add_argument(
