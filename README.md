@@ -57,6 +57,22 @@ detection YOLO26n; aplikasi ini mempertahankan jalur tersebut sekaligus output
 depth tambahan. Nama blok internal pada diagram tidak didefinisikan ulang di
 `main.py`; saat runtime, implementasinya berasal dari graph ONNX terlatih.
 
+### Blueprint PyTorch terpisah
+
+`arsitektur.py` berisi rancangan mandiri yang mengikuti alur diagram: backbone
+C3k2 dengan SPPF/C2PSA, neck FPN+PAN, head deteksi one-to-many/one-to-one, dan
+depth head tambahan. Detail channel/repeat adalah konfigurasi blueprint karena
+diagram tidak memuat seluruh parameter internal. Model baru ini tidak memiliki
+bobot terlatih, bukan salinan layer persis model ONNX, dan tidak menggantikan
+model yang dipakai kamera.
+
+Opsional, pasang PyTorch lalu jalankan pemeriksaan forward pass:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-architecture.txt
+.\.venv\Scripts\python.exe arsitektur.py --verify
+```
+
 ## Tes
 
 ```powershell
