@@ -38,6 +38,25 @@ Metadata model berada di folder `inference/` yang sama. Model mendeteksi kelas
 meter. Checkpoint `.pt`, dataset, dan berkas training tidak diperlukan untuk
 menjalankan kamera.
 
+## Alur terhadap diagram arsitektur
+
+`main.py` merupakan runner inferensi, bukan implementasi layer YOLO26n.
+Backbone, neck, dan kedua head dijalankan bersama di dalam graph ONNX:
+
+1. Kamera menghasilkan frame BGR.
+2. `MultitaskOnnxModel.predict` melakukan resize dengan rasio aspek terjaga,
+   padding ke ukuran input model, konversi BGR ke RGB, dan normalisasi.
+3. ONNX Runtime menjalankan satu graph multitask untuk deteksi dan depth.
+4. Kode mengembalikan kotak deteksi dan peta depth ke ukuran frame kamera;
+   median depth di dalam kotak dipakai sebagai jarak objek.
+
+Ukuran input model yang sebenarnya adalah `[1, 3, 480, 640]` dalam urutan
+`NCHW`, bukan gambar persegi `640 x 640` pada diagram. Output graph adalah
+deteksi `[1, 300, 6]` dan depth `[1, 1, 480, 640]`. Diagram menunjukkan jalur
+detection YOLO26n; aplikasi ini mempertahankan jalur tersebut sekaligus output
+depth tambahan. Nama blok internal pada diagram tidak didefinisikan ulang di
+`main.py`; saat runtime, implementasinya berasal dari graph ONNX terlatih.
+
 ## Tes
 
 ```powershell

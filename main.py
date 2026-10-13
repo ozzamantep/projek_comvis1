@@ -160,6 +160,8 @@ def normalize_depth_for_display(depth_m: ArrayLike) -> NDArray[np.uint8]:
 # Onnx application
 @dataclass(frozen=True)
 class MultitaskOnnxModel:
+    """Run the exported shared detector/depth graph and restore frame-space outputs."""
+
     session: Any
     input_name: str
     detection_output_name: str
@@ -173,6 +175,7 @@ class MultitaskOnnxModel:
         self,
         frame_bgr: NDArray[np.uint8],
     ) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+        """Letterbox a camera frame, run both ONNX heads, and undo the letterbox."""
         if frame_bgr.ndim != 3 or frame_bgr.shape[2] != 3:
             raise ValueError("frame_bgr must be a three-channel BGR image.")
         source_height, source_width = frame_bgr.shape[:2]
