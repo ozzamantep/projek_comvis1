@@ -51,6 +51,12 @@ Untuk membuka kamera langsung di jendela desktop (tanpa browser), jalankan
 deteksi dan jarak tiap objek di kiri, peta depth dan jarak tiap objek di kanan.
 Jarak titik tengah juga ditampilkan di panel depth. Tekan `s` untuk mengganti
 tampilan, klik gambar untuk membaca jarak titik, dan `q` untuk keluar.
+Kamera memakai faktor kalibrasi awal `0.5833` dari empat pasangan pengukuran
+yang diberikan. Faktor ini merata-ratakan skala saja; karena hasil model untuk
+jarak 50–150 cm masih berkumpul di sekitar 160–180 cm, angka setelah kalibrasi
+tetap perkiraan dan faktor ini tidak berlaku universal. Faktor dapat diganti
+dengan `--depth-scale`, misalnya `.\.venv\Scripts\python.exe main.py camera
+--depth-scale 0.60`.
 
 `main.py` menjadi entry point aplikasi Python. `penting/` tetap berisi trainer,
 eksperimen, dan tes; `pendukung/` berisi prototipe. Aplikasi Android masih ada

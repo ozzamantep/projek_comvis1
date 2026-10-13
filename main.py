@@ -33,11 +33,21 @@ DEFAULT_METADATA_PATH = (
     "yolo26n_multitask_coco4_v1_20261013-163528-539afa/"
     "inference/model_metadata.json"
 )
+DEFAULT_CAMERA_DEPTH_SCALE = 7.0 / 12.0
 
 # Depth application
 def meters_to_cm(meters: ArrayLike) -> NDArray[np.float32]:
     """Convert meters to centimeters."""
     return np.asarray(meters, dtype=np.float32) * np.float32(100.0)
+
+
+def calibrate_depth_map(
+    depth_m: ArrayLike, scale: float = DEFAULT_CAMERA_DEPTH_SCALE
+) -> NDArray[np.float32]:
+    """Apply the empirical webcam scale to a metric depth map."""
+    if not np.isfinite(scale) or scale <= 0:
+        raise ValueError("Depth calibration scale must be finite and positive.")
+    return np.asarray(depth_m, dtype=np.float32) * np.float32(scale)
 
 
 class DepthPatchStats(NamedTuple):
@@ -1034,6 +1044,7 @@ def run_camera(
     patch_size: int,
     max_depth_m: float,
     debug: bool,
+    depth_scale: float,
 ) -> None:
     camera = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
     if not camera.isOpened():
@@ -1058,6 +1069,7 @@ def run_camera(
         "Tampilan awal split: deteksi + jarak di kiri, depth + jarak di kanan. "
         "Klik untuk mengukur titik; s: ganti tampilan; d: overlay on/off; q: keluar."
     )
+    print(f"Kalibrasi skala depth kamera: x{depth_scale:.4f}")
     if debug:
         print(
             "Debug aktif: nilai raw di center bbox, ukuran patch efektif, "
@@ -1071,7 +1083,7 @@ def run_camera(
                 raise RuntimeError("Gagal membaca frame dari kamera.")
 
             detections, depth_m = model.predict(frame)
-            depth_m = smoother.update(depth_m)
+            depth_m = calibrate_depth_map(smoother.update(depth_m), depth_scale)
             state["depth_m"] = depth_m
             state["frame_width"] = frame.shape[1]
 
@@ -1186,6 +1198,15 @@ def camera_main() -> None:
     parser.add_argument("--patch-size", type=int, default=15)
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument(
+        "--depth-scale",
+        type=float,
+        default=DEFAULT_CAMERA_DEPTH_SCALE,
+        help=(
+            "Kalibrasi skala webcam (default x0.5833 dari 4 pasangan "
+            "ukur yang diberikan; khusus setup kamera ini)."
+        ),
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Tampilkan raw depth di center bbox, ukuran patch, dan variansi patch.",
@@ -1201,6 +1222,8 @@ def camera_main() -> None:
         parser.error("--patch-size harus bilangan ganjil positif.")
     if not np.isfinite(args.max_depth_m) or args.max_depth_m <= 0:
         parser.error("--max-depth-m harus bernilai positif.")
+    if not np.isfinite(args.depth_scale) or args.depth_scale <= 0:
+        parser.error("--depth-scale harus bernilai positif.")
 
     model = load_multitask_onnx_model(args.model, args.metadata)
     try:
@@ -1216,6 +1239,7 @@ def camera_main() -> None:
         args.patch_size,
         args.max_depth_m,
         args.debug,
+        args.depth_scale,
     )
 
 
