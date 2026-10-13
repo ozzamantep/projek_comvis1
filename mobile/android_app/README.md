@@ -1,6 +1,6 @@
 # YOLO26n multitask Android
 
-Aplikasi Android Kotlin ini menjalankan satu graph ONNX multitask dari
+Aplikasi Android menjalankan satu graph ONNX multitask dari
 `data/multitask.onnx`, hasil export terbaru dari `data/multitask_best.pt`.
 Satu input gambar menghasilkan dua keluaran:
 `det` untuk bounding box/kelas dan `depth` untuk peta jarak. Nilai jarak objek
@@ -24,6 +24,10 @@ secara temporal.
 Android menggunakan satu sesi ONNX Runtime untuk meminta kedua output dalam
 satu inferensi per frame. Deteksi dan depth bukan lagi dua interpreter/model
 terpisah pada jalur Android.
+
+Implementasi class aplikasi Android disatukan di
+`app/src/main/java/id/ac/comvis/yolo26depth/MainActivity.kt` agar mudah
+ditemukan. Unit test tetap di folder `app/src/test/` dan tidak masuk ke APK.
 
 ## Kalibrasi jarak
 

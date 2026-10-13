@@ -13,23 +13,13 @@ Input ONNX adalah float32 NCHW `[1,3,480,640]`. Output `det` berbentuk
 Validasi ekspor ONNX pada metadata menunjukkan perbedaan kecil dari PyTorch,
 tetapi pengukuran jarak tetap perlu diuji pada kamera target.
 
-`penting/arsitektur_yolo_depth.py` menyimpan implementasi eksperimen terpisah
-untuk diagram YOLO26nDepth dan trainer NYU; bobot `multitask_best.pt` tidak
-dapat langsung dimuat sebagai state dict model eksperimen tersebut.
-
-```powershell
-.\.venv\Scripts\python.exe penting\train_nyu_colab.py `
-  --nyu-path data\nyu_depth_v2_labeled.mat `
-  --output data\yolo26n_depth_pdf_best.pt `
-  --loss-plot data\yolo26n_depth_pdf_loss.png
-```
-
 ## Struktur
 
-- `penting/`: satu modul per tanggung jawab—runner multitask, helper inferensi,
-  evaluasi, validasi, kalibrasi, trainer/diagnostik eksperimen, dan tes.
-- `mobile/android_app/`: kelas Kotlin dipisah per class/komponen, mengikuti pola
-  Android; tidak digabung menjadi satu file besar.
+- `main.py`: satu entry point desktop untuk kamera, evaluasi NYU, validasi foto,
+  kalibrasi, serta helper inference/depth.
+- `penting/`: trainer, eksperimen, diagnostik, dan tes yang bukan jalur harian.
+- `mobile/android_app/`: semua class Kotlin aplikasi berada di satu file
+  `MainActivity.kt`; tes Android tetap terpisah.
 - `pendukung/`: contoh/prototipe mandiri dan alat inspeksi MATLAB, bukan jalur
   inferensi utama.
 - `data/`: checkpoint dan data lokal yang diperlukan oleh beberapa perintah.
@@ -58,8 +48,9 @@ Jalankan perintah dari direktori root proyek agar path default `data\...`
 berfungsi, contohnya:
 
 ```powershell
-.\.venv\Scripts\python.exe penting\camera_yolo26_depth_metric.py --help
-.\.venv\Scripts\python.exe penting\evaluate_depth.py --help
+.\.venv\Scripts\python.exe main.py --help
+.\.venv\Scripts\python.exe main.py camera --help
+.\.venv\Scripts\python.exe main.py evaluate --help
 .\.venv\Scripts\python.exe -m unittest discover
 ```
 

@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from ..multitask_onnx import MultitaskOnnxModel
+from main import MultitaskOnnxModel
 
 
 class FakeSession:

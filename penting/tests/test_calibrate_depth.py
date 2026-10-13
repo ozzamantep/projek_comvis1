@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..calibrate_depth import fit_calibration, load_validation_pairs
+from main import fit_calibration, load_validation_pairs
 
 
 class CalibrationTests(unittest.TestCase):

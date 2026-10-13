@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from ..evaluate_depth import DepthMetricAccumulator, compute_depth_metrics
+from main import DepthMetricAccumulator, compute_depth_metrics
 
 
 class EvaluateDepthTests(unittest.TestCase):

@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from ..depth_utils import (
+from main import (
     DepthEMASmoother,
     get_depth_at_point,
     get_depth_in_bbox,
