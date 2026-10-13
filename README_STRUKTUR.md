@@ -2,9 +2,9 @@
 
 Kode aplikasi utama diringkas agar mudah ditemukan:
 
-- `main.py` adalah satu entry point Python untuk aplikasi desktop. Helper ONNX,
-  sampling/smoothing depth, kamera, evaluasi, validasi foto, dan kalibrasi
-  berada di file yang sama.
+- `main.py` adalah satu entry point Python. Secara default, ia menjalankan
+  aplikasi web localhost dengan kamera browser/foto upload dan inferensi ONNX.
+  Perintah evaluasi, validasi, kalibrasi, dan kamera desktop juga tersedia.
 - `mobile/android_app/app/src/main/java/id/ac/comvis/yolo26depth/MainActivity.kt`
   memuat class Kotlin aplikasi Android dalam satu file.
 - `penting/` masih menyimpan trainer arsitektur PDF, alat diagnosis, eksperimen,
@@ -15,9 +15,22 @@ Kode aplikasi utama diringkas agar mudah ditemukan:
 - `data/multitask.onnx` adalah model deployment lokal. Model dan checkpoint
   tidak diduplikasi di source tree Android.
 
-## Menjalankan aplikasi desktop
+## Menjalankan aplikasi web lokal
 
-Jalankan dari root repository agar path relatif `data/` benar.
+Jalankan dari root repository agar path relatif `data/` benar. Server hanya
+menerima koneksi localhost.
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+Buka `http://127.0.0.1:8000`, izinkan kamera atau pilih foto. Untuk port lain:
+
+```powershell
+.\.venv\Scripts\python.exe main.py web --port 8080
+```
+
+Perintah lain:
 
 ```powershell
 .\.venv\Scripts\python.exe main.py --help
@@ -27,10 +40,10 @@ Jalankan dari root repository agar path relatif `data/` benar.
 .\.venv\Scripts\python.exe main.py calibrate --help
 ```
 
-`camera` adalah perintah default. Contoh menjalankan fitur:
+Jalankan perintah berikut jika ingin menggunakan CLI desktop/analisis:
 
 ```powershell
-.\.venv\Scripts\python.exe main.py
+.\.venv\Scripts\python.exe main.py camera
 .\.venv\Scripts\python.exe main.py evaluate
 .\.venv\Scripts\python.exe main.py validate
 .\.venv\Scripts\python.exe main.py calibrate --csv data\metric_validation.csv

@@ -13,18 +13,33 @@ Input ONNX adalah float32 NCHW `[1,3,480,640]`. Output `det` berbentuk
 Validasi ekspor ONNX pada metadata menunjukkan perbedaan kecil dari PyTorch,
 tetapi pengukuran jarak tetap perlu diuji pada kamera target.
 
-## Struktur
+## Aplikasi web lokal
 
-- `main.py`: satu entry point desktop untuk kamera, evaluasi NYU, validasi foto,
-  kalibrasi, serta helper inference/depth.
-- `penting/`: trainer, eksperimen, diagnostik, dan tes yang bukan jalur harian.
-- `mobile/android_app/`: semua class Kotlin aplikasi berada di satu file
-  `MainActivity.kt`; tes Android tetap terpisah.
-- `pendukung/`: contoh/prototipe mandiri dan alat inspeksi MATLAB, bukan jalur
-  inferensi utama.
-- `data/`: checkpoint dan data lokal yang diperlukan oleh beberapa perintah.
-- `data/pendukung/`: checkpoint eksperimental dan model alternatif.
-- `README_STRUKTUR.md`: daftar fungsi file dan perintah kerja lebih lengkap.
+Jalankan server dari root proyek, lalu buka alamat localhost di browser:
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+Secara default aplikasi tersedia di `http://127.0.0.1:8000`. Browser akan
+meminta izin kamera; bisa juga pilih foto untuk diuji. Frame diproses oleh
+`data/multitask.onnx` melalui ONNX Runtime lokal. Server hanya bind ke
+`127.0.0.1`, jadi tidak dibuka ke jaringan.
+
+Perintah yang tersedia:
+
+```powershell
+.\.venv\Scripts\python.exe main.py web --port 8000
+.\.venv\Scripts\python.exe main.py camera --help
+.\.venv\Scripts\python.exe main.py evaluate --help
+.\.venv\Scripts\python.exe main.py validate --help
+.\.venv\Scripts\python.exe main.py calibrate --help
+.\.venv\Scripts\python.exe -m unittest discover
+```
+
+`main.py` menjadi entry point aplikasi Python. `penting/` tetap berisi trainer,
+eksperimen, dan tes; `pendukung/` berisi prototipe. Aplikasi Android masih ada
+sebagai target opsional, tetapi tidak diperlukan untuk menjalankan web lokal.
 
 ## Persiapan environment
 
@@ -43,16 +58,6 @@ halaman resmi PyTorch: <https://pytorch.org/get-started/locally/>.
 Inferensi desktop multitask memakai `onnxruntime`; trainer dan eksperimen
 memakai `ultralytics`; visualisasi memakai `matplotlib`; akses NYU MAT memakai
 `h5py`.
-
-Jalankan perintah dari direktori root proyek agar path default `data\...`
-berfungsi, contohnya:
-
-```powershell
-.\.venv\Scripts\python.exe main.py --help
-.\.venv\Scripts\python.exe main.py camera --help
-.\.venv\Scripts\python.exe main.py evaluate --help
-.\.venv\Scripts\python.exe -m unittest discover
-```
 
 Di workspace ini, hook Git lokal mencoba menjalankan `git push origin main`
 setelah setiap commit; jika push gagal, commit tetap berhasil dan hook memberi

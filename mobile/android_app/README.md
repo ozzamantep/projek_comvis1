@@ -1,5 +1,9 @@
 # YOLO26n multitask Android
 
+Aplikasi web localhost adalah antarmuka utama yang disarankan untuk penggunaan
+di komputer. Android di bawah ini merupakan target opsional yang masih
+dipertahankan.
+
 Aplikasi Android menjalankan satu graph ONNX multitask dari
 `data/multitask.onnx`, hasil export terbaru dari `data/multitask_best.pt`.
 Satu input gambar menghasilkan dua keluaran:
