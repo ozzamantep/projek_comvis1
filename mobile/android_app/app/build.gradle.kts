@@ -3,16 +3,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val calibratedDepthModel = rootProject.projectDir
-    .resolve("../../data/yolo26n-depth-nyu-calibrated.tflite")
-val generatedModelAssets = layout.buildDirectory.dir("generated/calibratedDepthAssets")
-val syncCalibratedDepthModel = tasks.register<Copy>("syncCalibratedDepthModel") {
-    from(calibratedDepthModel)
+val multitaskModel = rootProject.projectDir
+    .resolve("../../data/multitask.onnx")
+val generatedModelAssets = layout.buildDirectory.dir("generated/multitaskModelAssets")
+val syncMultitaskModel = tasks.register<Sync>("syncMultitaskModel") {
+    from(multitaskModel)
     into(generatedModelAssets)
     doFirst {
-        require(calibratedDepthModel.isFile) {
-            "Depth model is missing: $calibratedDepthModel. " +
-                "Place yolo26n-depth-nyu-calibrated.tflite in the repository data folder."
+        require(multitaskModel.isFile) {
+            "Combined ONNX model is missing: $multitaskModel. " +
+                "Place multitask.onnx in the repository data folder."
         }
     }
 }
@@ -46,7 +46,7 @@ android {
 }
 
 tasks.named("preBuild").configure {
-    dependsOn(syncCalibratedDepthModel)
+    dependsOn(syncMultitaskModel)
 }
 
 dependencies {
@@ -55,8 +55,8 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.4.2")
     implementation("androidx.camera:camera-lifecycle:1.4.2")
     implementation("androidx.camera:camera-view:1.4.2")
-    implementation("org.tensorflow:tensorflow-lite:2.16.1")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.16.1")
-    implementation("org.tensorflow:tensorflow-lite-gpu-api:2.16.1")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
 }

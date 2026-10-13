@@ -38,7 +38,8 @@ backup tersebut sengaja tidak memuat `.venv/` atau file `.pt`.
 | `arsitektur_yolo_depth.py` | Definisi arsitektur `YOLO26nDepth`, dataset NYU bersama, pemeriksaan checkpoint, dan mode verifikasi model. |
 | `kamera_yolo26_depth.py` | Runner kamera baseline yang dibahas pada Bab 2, dengan pilihan backend lokal atau Ultralytics. |
 | `train_nyu_colab.py` | Trainer NYU Depth V2 30 epoch yang memakai arsitektur lokal. |
-| `camera_yolo26_depth_metric.py` | Runner dua-model: detector COCO `data/yolo26n.pt` dan model depth lokal. |
+| `camera_yolo26_depth_metric.py` | Runner multitask satu-model: detection head dan depth head dari graph ONNX yang sama. |
+| `multitask_onnx.py` | Memvalidasi metadata/model, melakukan preprocessing letterbox, dan mengambil output deteksi serta depth dalam satu inference. |
 | `depth_utils.py` | Konversi output depth ke meter/cm, sampling bbox/titik, smoothing, dan normalisasi untuk visualisasi. |
 | `evaluate_depth.py` | Evaluasi metrik depth pada split validasi NYU. |
 | `validate_metric_photos.py` | Validasi jarak dari foto dengan input pengukuran meteran. |

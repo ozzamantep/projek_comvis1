@@ -97,18 +97,13 @@ def compute_depth_metrics(
 
 def evaluate_nyu_validation(args: argparse.Namespace) -> dict[str, Any]:
     import h5py
-    import torch
 
     if __package__:
-        from .ultralytics_depth import (
-            load_calibrated_depth_model,
-            predict_calibrated_depth_meters,
-        )
+        from .multitask_onnx import load_multitask_onnx_model
     else:
-        from ultralytics_depth import (
-            load_calibrated_depth_model,
-            predict_calibrated_depth_meters,
-        )
+        from multitask_onnx import load_multitask_onnx_model
+
+    model = load_multitask_onnx_model(args.model, args.metadata)
 
     with h5py.File(args.nyu_path, "r") as dataset_file:
         total_samples = int(dataset_file["images"].shape[0])
@@ -127,62 +122,55 @@ def evaluate_nyu_validation(args: argparse.Namespace) -> dict[str, Any]:
                 "Validation split is empty; use a larger dataset or --max-samples."
             )
 
-        device = torch.device(
-            args.device
-            if args.device != "auto"
-            else ("cuda" if torch.cuda.is_available() else "cpu")
-        )
-        model = load_calibrated_depth_model(args.weights, device)
         metrics = DepthMetricAccumulator(silog_lambda=args.silog_lambda)
         valid_images = 0
         excluded_out_of_range = 0
 
-        with torch.inference_mode():
-            for index in validation_indices:
-                image_rgb = np.asarray(dataset_file["images"][int(index)]).transpose(
-                    2, 1, 0
-                )
-                target_m = np.asarray(dataset_file["depths"][int(index)]).transpose(
-                    1, 0
-                ).astype(np.float32)
+        for index in validation_indices:
+            image_rgb = np.asarray(dataset_file["images"][int(index)]).transpose(
+                2, 1, 0
+            )
+            target_m = np.asarray(dataset_file["depths"][int(index)]).transpose(
+                1, 0
+            ).astype(np.float32)
 
-                image_bgr = np.ascontiguousarray(image_rgb[:, :, ::-1]).astype(
-                    np.uint8,
-                    copy=False,
-                )
-                prediction_m = predict_calibrated_depth_meters(
-                    model,
-                    image_bgr,
-                    device,
-                    input_size=args.input_size,
+            image_bgr = np.ascontiguousarray(image_rgb[:, :, ::-1]).astype(
+                np.uint8,
+                copy=False,
+            )
+            _, prediction_m = model.predict(image_bgr)
+            if prediction_m.shape != target_m.shape:
+                raise ValueError(
+                    f"Prediction shape {prediction_m.shape} does not match "
+                    f"NYU target shape {target_m.shape}."
                 )
 
-                valid = (
+            valid = (
+                np.isfinite(target_m)
+                & (target_m > 0)
+                & (target_m <= args.max_depth_m)
+            )
+            excluded_out_of_range += int(
+                np.count_nonzero(
                     np.isfinite(target_m)
-                    & (target_m > 0)
-                    & (target_m <= args.max_depth_m)
+                    & (target_m > args.max_depth_m)
                 )
-                excluded_out_of_range += int(
-                    np.count_nonzero(
-                        np.isfinite(target_m)
-                        & (target_m > args.max_depth_m)
-                    )
-                )
-                if np.any(valid):
-                    valid_images += 1
-                metrics.update(prediction_m, target_m, valid)
+            )
+            if np.any(valid):
+                valid_images += 1
+            metrics.update(prediction_m, target_m, valid)
 
     result = metrics.compute()
     result.update(
         {
-            "device": str(device),
+            "runtime": "onnxruntime-cpu",
             "total_samples": total_samples,
             "samples_used_for_split": sample_count,
             "validation_images": int(validation_indices.size),
             "images_with_valid_depth": valid_images,
             "excluded_gt_pixels_above_max_depth": excluded_out_of_range,
             "max_depth_m": args.max_depth_m,
-            "input_size": args.input_size,
+            "input_size": [model.input_height, model.input_width],
             "silog_lambda": args.silog_lambda,
         }
     )
@@ -194,10 +182,8 @@ def main() -> None:
         description="Reproduce depth metrics on the deterministic NYU validation split."
     )
     parser.add_argument("--nyu-path", default="data/nyu_depth_v2_labeled.mat")
-    parser.add_argument(
-        "--weights", default="data/yolo26n-depth-nyu-calibrated.pt"
-    )
-    parser.add_argument("--input-size", type=int, default=640)
+    parser.add_argument("--model", default="data/multitask.onnx")
+    parser.add_argument("--metadata", default="data/model_metadata.json")
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--split-seed", type=int, default=42)
@@ -207,19 +193,12 @@ def main() -> None:
         default=1.0,
         help="SILog uses 100*sqrt(E[g^2]-lambda*E[g]^2); default 1 is scale invariant.",
     )
-    parser.add_argument(
-        "--device",
-        default="auto",
-        help="auto, cpu, cuda, or another torch device string.",
-    )
     parser.add_argument("--output-csv", default="")
     args = parser.parse_args()
 
-    for path in (args.nyu_path, args.weights):
+    for path in (args.nyu_path, args.model, args.metadata):
         if not os.path.isfile(path):
             parser.error(f"File tidak ditemukan: {path}")
-    if args.input_size < 32 or args.input_size % 32:
-        parser.error("--input-size harus minimal 32 dan kelipatan 32.")
     if not np.isfinite(args.max_depth_m) or args.max_depth_m <= 0:
         parser.error("--max-depth-m harus bernilai positif.")
     if args.max_samples == 1:
@@ -231,7 +210,7 @@ def main() -> None:
 
     result = evaluate_nyu_validation(args)
     print("NYU Depth V2 validation metrics (pixel-weighted, metric units)")
-    print(f"Device: {result['device']}")
+    print(f"Runtime: {result['runtime']}")
     print(
         f"Validation images: {result['validation_images']} "
         f"({result['images_with_valid_depth']} contain valid depth)"

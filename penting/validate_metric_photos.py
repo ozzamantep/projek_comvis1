@@ -55,23 +55,16 @@ def _on_mouse(event: int, x: int, y: int, flags: int, state: dict[str, Any]) -> 
 
 def validate_photos(args: argparse.Namespace) -> None:
     import cv2
-    import torch
 
     if __package__:
-        from .camera_yolo26_depth_metric import (
-            load_depth_model,
-            predict_depth_meters,
-        )
         from .depth_utils import get_depth_at_point, normalize_depth_for_display
+        from .multitask_onnx import load_multitask_onnx_model
     else:
-        from camera_yolo26_depth_metric import (
-            load_depth_model,
-            predict_depth_meters,
-        )
         from depth_utils import get_depth_at_point, normalize_depth_for_display
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = load_depth_model(args.weights, device)
+        from multitask_onnx import load_multitask_onnx_model
+
+    model = load_multitask_onnx_model(args.model, args.metadata)
     rows: list[dict[str, Any]] = []
     state: dict[str, Any] = {"cv2": cv2, "point": None, "frame_width": 0}
     title = "Photo metric-depth validation"
@@ -83,7 +76,7 @@ def validate_photos(args: argparse.Namespace) -> None:
             frame = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
             if frame is None:
                 raise RuntimeError(f"Gagal membaca foto: {image_path}")
-            depth_m = predict_depth_meters(model, device, frame)
+            _, depth_m = model.predict(frame)
             depth_color = cv2.applyColorMap(
                 normalize_depth_for_display(depth_m), cv2.COLORMAP_INFERNO
             )
@@ -172,10 +165,8 @@ def main() -> None:
         description="Generate a blank template or sample real-distance photos."
     )
     parser.add_argument("--image-dir", default="data/metric_photos")
-    parser.add_argument(
-        "--weights",
-        default="data/yolo26n-depth-nyu-calibrated.pt",
-    )
+    parser.add_argument("--model", default="data/multitask.onnx")
+    parser.add_argument("--metadata", default="data/model_metadata.json")
     parser.add_argument("--output", default="data/metric_validation.csv")
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument("--patch-size", type=int, default=5)
@@ -212,8 +203,9 @@ def main() -> None:
         print(f"Blank validation template saved: {args.output}")
         return
 
-    if not os.path.isfile(args.weights):
-        parser.error(f"Checkpoint tidak ditemukan: {args.weights}")
+    for path in (args.model, args.metadata):
+        if not os.path.isfile(path):
+            parser.error(f"File model/metadata tidak ditemukan: {path}")
     validate_photos(args)
 
 

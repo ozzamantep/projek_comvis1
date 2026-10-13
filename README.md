@@ -1,17 +1,21 @@
 # Projek Computer Vision — YOLO26n-Depth
 
-Proyek tugas Computer Vision ini mengembangkan pipeline berbasis YOLO26n-Depth
-untuk estimasi kedalaman dan jarak metrik (meter/cm), dengan sasaran porting
-dan inferensi pada perangkat mobile. Pipeline desktop saat ini memisahkan
-deteksi objek COCO (Ultralytics) dari prediksi depth lokal yang dilatih pada
-NYU Depth V2. Backbone, neck FPN+PAN, detection head multi-skala, dan cabang
-DepthHead mengikuti arsitektur pada diagram laporan PDF.
+Proyek ini memakai satu model YOLO26n multitask untuk depth metrik dan deteksi.
+Satu gambar mengalir melalui backbone YOLO26n dan neck FPN/PAN bersama, lalu
+bercabang ke detection head (kotak/kelas) dan depth head (peta jarak). Desktop
+dan Android menjalankan graph deployment yang sama, `data/multitask.onnx`,
+sehingga deteksi dan depth dihasilkan oleh satu inferensi.
 
-`data/depthnet_best.pt` tidak memakai arsitektur `YOLO26nDepth` pada laporan:
-nama kunci tensor checkpoint tersebut tidak cocok dengan model proyek. Karena
-itu checkpoint tersebut tidak dipasang ke model dan loader akan menolak bobot
-yang arsitekturnya berbeda. Untuk mempertahankan arsitektur PDF, latih ulang
-dengan trainer proyek dan simpan hasilnya ke file terpisah:
+Checkpoint terlatih `data/multitask_best.pt` diekspor sebagai
+`data/multitask.onnx`; `data/model_metadata.json` menjelaskan kontrak model.
+Input ONNX adalah float32 NCHW `[1,3,480,640]`. Output `det` berbentuk
+`[1,300,6]` dan output `depth` berbentuk `[1,1,480,640]` dalam meter.
+Validasi ekspor ONNX pada metadata menunjukkan perbedaan kecil dari PyTorch,
+tetapi pengukuran jarak tetap perlu diuji pada kamera target.
+
+`penting/arsitektur_yolo_depth.py` menyimpan implementasi eksperimen terpisah
+untuk diagram YOLO26nDepth dan trainer NYU; bobot `multitask_best.pt` tidak
+dapat langsung dimuat sebagai state dict model eksperimen tersebut.
 
 ```powershell
 .\.venv\Scripts\python.exe penting\train_nyu_colab.py `
@@ -19,15 +23,6 @@ dengan trainer proyek dan simpan hasilnya ke file terpisah:
   --output data\yolo26n_depth_pdf_best.pt `
   --loss-plot data\yolo26n_depth_pdf_loss.png
 ```
-
-Setelah training, berikan `data\yolo26n_depth_pdf_best.pt` lewat opsi
-`--depth-weights` pada runner kamera atau `--weights` pada evaluator/diagnostik.
-Checkpoint PDF lama yang kompatibel tetap tersedia; training baru tidak
-menimpa file tersebut.
-
-Konversi depth lokal saat ini menggunakan asumsi sementara
-`raw_depth × 10 meter`; angka tersebut bukan jaminan akurasi jarak kamera tanpa
-validasi dan kalibrasi untuk kamera yang digunakan.
 
 ## Struktur
 
@@ -48,13 +43,14 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install torch torchvision
-python -m pip install numpy opencv-python h5py matplotlib ultralytics
+python -m pip install numpy opencv-python h5py matplotlib ultralytics onnxruntime
 ```
 
 Untuk GPU NVIDIA, pilih instalasi PyTorch yang sesuai dengan versi CUDA dari
 halaman resmi PyTorch: <https://pytorch.org/get-started/locally/>.
-Deteksi COCO membutuhkan paket `ultralytics`; visualisasi/training menggunakan
-`matplotlib`; akses NYU MAT memakai `h5py`.
+Inferensi desktop multitask memakai `onnxruntime`; trainer dan eksperimen
+memakai `ultralytics`; visualisasi memakai `matplotlib`; akses NYU MAT memakai
+`h5py`.
 
 Jalankan perintah dari direktori root proyek agar path default `data\...`
 berfungsi, contohnya:
@@ -81,6 +77,6 @@ tetap dikelola sebagai file proyek karena ukuran masing-masing di bawah 100 MB.
 
 ## Catatan mobile
 
-Target implementasi mobile yang direncanakan adalah Android Native (Kotlin)
-dengan LiteRT. Ekspor dan validasi model mobile belum dinyatakan selesai hanya
-dengan adanya kode desktop di repository.
+Android memakai sesi ONNX Runtime yang sama dengan desktop. Gradle menyalin
+`data/multitask.onnx` ke assets saat build; file model tetap lokal dan tidak
+perlu diduplikasi ke source tree.
