@@ -6,20 +6,14 @@ Commands: camera, evaluate, validate, and calibrate.
 from __future__ import annotations
 
 import argparse
-import base64
 import csv
 import json
 import math
 import os
 import sys
-import threading
-import time
 from dataclasses import dataclass
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NamedTuple
-from urllib.parse import parse_qs, urlsplit
 
 import cv2
 import numpy as np
@@ -1243,298 +1237,9 @@ def camera_main() -> None:
     )
 
 
-WEB_PAGE = r"""<!doctype html>
-<html lang="id">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>YOLO26n Depth — Localhost</title>
-  <style>
-    :root{color-scheme:dark;--bg:#0b1020;--panel:#121a2d;--line:#26334c;--muted:#9aabc4;--accent:#7ce0bd;--text:#eef4ff}
-    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#172644,var(--bg) 60%);color:var(--text);font:15px/1.5 system-ui,sans-serif}
-    main{width:min(1180px,94vw);margin:34px auto 56px}.top{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:22px}
-    h1{font-size:clamp(26px,4vw,40px);line-height:1.1;margin:0 0 8px;letter-spacing:-.04em}.sub,.hint{color:var(--muted)}
-    .badge{border:1px solid #38556a;border-radius:99px;color:var(--accent);padding:7px 12px;white-space:nowrap}
-    .panel{background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 50px #0003}
-    .controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:15px}
-    button,.upload{border:1px solid #3b506c;border-radius:10px;background:#1b2941;color:var(--text);padding:10px 15px;font:inherit;cursor:pointer}
-    button.primary{background:var(--accent);border-color:var(--accent);color:#092018;font-weight:700}
-    button:disabled{opacity:.45;cursor:not-allowed}.upload input{display:none}.range{display:flex;align-items:center;gap:8px;color:var(--muted);margin-left:auto}
-    input[type=range]{accent-color:var(--accent)}.status{color:var(--muted);min-height:24px;margin:3px 0 12px}
-    .status.error{color:#ff9b9b}.view{position:relative;min-height:140px;background:#080c15;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center}
-    .view video,.view img{display:block;width:100%;height:auto;max-height:70vh;object-fit:contain}.view canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-    #video{display:none}#photo{display:none}.empty{padding:52px 20px;text-align:center;color:var(--muted)}
-    .results{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:18px;margin-top:18px}
-    .results h2{font-size:16px;margin:0 0 10px}.depth{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:#080c15}
-    .detections{display:grid;gap:8px}.item{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:7px 2px}
-    .item span:last-child{color:var(--accent);white-space:nowrap}.empty-list{color:var(--muted)}
-    footer{color:var(--muted);font-size:13px;margin-top:16px}
-    @media(max-width:700px){main{margin-top:20px}.top{align-items:start;flex-direction:column}.results{grid-template-columns:1fr}.range{margin-left:0;width:100%}.view video,.view img{max-height:55vh}}
-  </style>
-</head>
-<body>
-<main>
-  <header class="top">
-    <div><h1>YOLO26n <span style="color:var(--accent)">Depth</span></h1><div class="sub">Deteksi objek dan estimasi jarak dari satu model multitask.</div></div>
-    <div class="badge">Berjalan lokal · ONNX</div>
-  </header>
-  <section class="panel">
-    <div class="controls">
-      <button id="start" class="primary">Nyalakan kamera</button>
-      <button id="stop" disabled>Matikan</button>
-      <label class="upload">Pilih foto<input id="file" type="file" accept="image/*"></label>
-      <label class="range">Confidence <input id="confidence" type="range" min="5" max="80" value="25"><span id="confValue">0.25</span></label>
-    </div>
-    <div id="status" class="status">Memeriksa model lokal…</div>
-    <div id="view" class="view">
-      <div id="empty" class="empty">Nyalakan kamera atau pilih foto untuk mulai.</div>
-      <video id="video" autoplay playsinline muted></video>
-      <img id="photo" alt="Foto yang dipilih">
-      <canvas id="overlay"></canvas>
-    </div>
-    <div class="results">
-      <div><h2>Objek terdeteksi</h2><div id="detections" class="detections"><div class="empty-list">Belum ada hasil.</div></div></div>
-      <div><h2>Peta depth</h2><img id="depth" class="depth" alt="Peta kedalaman model"></div>
-    </div>
-    <footer>Video/foto diproses di komputer ini melalui localhost; tidak dikirim ke layanan luar.</footer>
-  </section>
-</main>
-<script>
-const video=document.querySelector("#video"),photo=document.querySelector("#photo"),overlay=document.querySelector("#overlay");
-const ctx=overlay.getContext("2d"),statusEl=document.querySelector("#status"),empty=document.querySelector("#empty");
-const start=document.querySelector("#start"),stop=document.querySelector("#stop"),file=document.querySelector("#file");
-const confidence=document.querySelector("#confidence"),confValue=document.querySelector("#confValue"),depthEl=document.querySelector("#depth");
-const list=document.querySelector("#detections"),capture=document.createElement("canvas");
-let stream=null,running=false,inFlight=false,mode="camera",lastSourceSize=[0,0];
-function status(text,error=false){statusEl.textContent=text;statusEl.classList.toggle("error",error)}
-confidence.addEventListener("input",()=>{confValue.textContent=(Number(confidence.value)/100).toFixed(2)});
-function showSource(){empty.style.display="none";video.style.display=mode==="camera"?"block":"none";photo.style.display=mode==="photo"?"block":"none"}
-function clearOverlay(){ctx.clearRect(0,0,overlay.width,overlay.height)}
-function captureFrame(){
-  const w=mode==="camera"?video.videoWidth:photo.naturalWidth,h=mode==="camera"?video.videoHeight:photo.naturalHeight;
-  if(!w||!h)return null;
-  const scale=Math.min(1,960/w,960/h),cw=Math.max(1,Math.round(w*scale)),ch=Math.max(1,Math.round(h*scale));
-  capture.width=cw;capture.height=ch;capture.getContext("2d").drawImage(mode==="camera"?video:photo,0,0,cw,ch);
-  overlay.width=w;overlay.height=h;lastSourceSize=[cw,ch];
-  return new Promise(resolve=>capture.toBlob(resolve,"image/jpeg",0.82));
-}
-function draw(items,sourceWidth,sourceHeight){
-  clearOverlay();const scaleX=overlay.width/sourceWidth,scaleY=overlay.height/sourceHeight;
-  ctx.lineWidth=Math.max(2,overlay.width/500);ctx.font=`600 ${Math.max(13,overlay.width/65)}px system-ui`;
-  for(const d of items){
-    const [x1,y1,x2,y2]=d.box,x=x1*scaleX,y=y1*scaleY,w=(x2-x1)*scaleX,h=(y2-y1)*scaleY;
-    ctx.strokeStyle="#7ce0bd";ctx.fillStyle="#7ce0bd";ctx.strokeRect(x,y,w,h);
-    const text=`${d.class_name} ${d.distance_m.toFixed(2)} m · ${(d.score*100).toFixed(0)}%`;
-    const th=Math.max(21,overlay.width/30),tw=ctx.measureText(text).width+12,ty=Math.max(th,y);
-    ctx.fillRect(x,ty-th,tw,th);ctx.fillStyle="#092018";ctx.fillText(text,x+6,ty-th/4);
-  }
-  list.replaceChildren();
-  if(!items.length){list.innerHTML='<div class="empty-list">Tidak ada objek pada ambang confidence ini.</div>';return}
-  for(const d of items){const row=document.createElement("div");row.className="item";
-    const name=document.createElement("span");name.textContent=`${d.class_name} · ${(d.score*100).toFixed(0)}%`;
-    const dist=document.createElement("span");dist.textContent=`${d.distance_m.toFixed(2)} m (${(d.distance_m*100).toFixed(0)} cm)`;
-    row.append(name,dist);list.append(row)}
-}
-async function infer(){
-  if(inFlight)return;inFlight=true;
-  try{
-    const blob=await captureFrame();if(!blob)return;
-    const started=performance.now();
-    const response=await fetch(`/api/infer?confidence=${Number(confidence.value)/100}`,{method:"POST",headers:{"Content-Type":"image/jpeg"},body:blob});
-    const data=await response.json();if(!response.ok)throw new Error(data.error||"Inferensi gagal.");
-    draw(data.detections,data.width,data.height);
-    depthEl.src=`data:image/jpeg;base64,${data.depth_preview}`;
-    status(`Inferensi ${data.inference_ms.toFixed(0)} ms · ${data.detections.length} objek`);
-  }catch(error){status(error.message||String(error),true);running=false;start.disabled=false;stop.disabled=true}
-  finally{inFlight=false}
-  if(running)setTimeout(infer,350);
-}
-start.addEventListener("click",async()=>{
-  try{if(!navigator.mediaDevices?.getUserMedia)throw new Error("Browser tidak mendukung akses kamera.");
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
-    video.srcObject=stream;await video.play();mode="camera";showSource();running=true;start.disabled=true;stop.disabled=false;status("Kamera aktif; memproses frame…");infer();
-  }catch(error){status(error.message||String(error),true)}
-});
-stop.addEventListener("click",()=>{running=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}video.srcObject=null;start.disabled=false;stop.disabled=true;status("Kamera dimatikan.")});
-file.addEventListener("change",()=>{
-  const chosen=file.files?.[0];if(!chosen)return;
-  running=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}video.srcObject=null;
-  mode="photo";photo.src=URL.createObjectURL(chosen);photo.onload=()=>{showSource();status("Foto siap; menjalankan inferensi…");infer()};
-});
-(async()=>{try{const r=await fetch("/api/health");const d=await r.json();if(!r.ok)throw new Error(d.error||"Model tidak siap.");status(`Model siap · ${d.classes} kelas · input ${d.input_width}×${d.input_height}`)}catch(e){status(e.message||String(e),true)}})();
-</script>
-</body>
-</html>
-"""
-
-
-def create_web_handler(model: MultitaskOnnxModel, patch_size: int = 15):
-    inference_lock = threading.Lock()
-
-    class WebHandler(BaseHTTPRequestHandler):
-        server_version = "YOLO26nDepthLocal/1.0"
-
-        def _send_json(self, payload: dict[str, Any], status: int = 200) -> None:
-            encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(encoded)
-
-        def do_GET(self) -> None:
-            route = urlsplit(self.path).path
-            if route == "/":
-                body = WEB_PAGE.encode("utf-8")
-                self.send_response(HTTPStatus.OK)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(body)
-            elif route == "/api/health":
-                self._send_json(
-                    {
-                        "ready": True,
-                        "classes": len(model.class_names),
-                        "input_width": model.input_width,
-                        "input_height": model.input_height,
-                    }
-                )
-            else:
-                self._send_json({"error": "Halaman tidak ditemukan."}, 404)
-
-        def do_POST(self) -> None:
-            route = urlsplit(self.path)
-            if route.path != "/api/infer":
-                self._send_json({"error": "Endpoint tidak ditemukan."}, 404)
-                return
-
-            try:
-                content_length = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                self._send_json({"error": "Content-Length tidak valid."}, 400)
-                return
-            if content_length <= 0 or content_length > 8 * 1024 * 1024:
-                self._send_json({"error": "Ukuran foto harus antara 1 byte dan 8 MB."}, 413)
-                return
-
-            try:
-                confidence_values = parse_qs(route.query).get("confidence", ["0.25"])
-                confidence = float(confidence_values[0])
-                if not np.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
-                    raise ValueError("Confidence harus berada pada rentang 0 sampai 1.")
-                encoded_image = self.rfile.read(content_length)
-                frame = cv2.imdecode(
-                    np.frombuffer(encoded_image, dtype=np.uint8),
-                    cv2.IMREAD_COLOR,
-                )
-                if frame is None:
-                    raise ValueError("Data bukan foto JPEG/PNG yang dapat dibaca.")
-
-                started = time.perf_counter()
-                with inference_lock:
-                    detections, depth_m = model.predict(frame)
-                inference_ms = (time.perf_counter() - started) * 1000.0
-
-                results: list[dict[str, Any]] = []
-                for row in detections:
-                    if not np.isfinite(row).all() or row[4] < confidence:
-                        continue
-                    class_id = int(round(float(row[5])))
-                    if class_id not in range(len(model.class_names)):
-                        continue
-                    x1, y1, x2, y2 = (float(value) for value in row[:4])
-                    if x2 <= x1 or y2 <= y1:
-                        continue
-                    try:
-                        distance_m = get_depth_in_bbox(
-                            depth_m,
-                            (x1, y1, x2, y2),
-                            patch_size=patch_size,
-                        )
-                    except ValueError:
-                        continue
-                    results.append(
-                        {
-                            "box": [x1, y1, x2, y2],
-                            "score": float(row[4]),
-                            "class_id": class_id,
-                            "class_name": model.class_names[class_id],
-                            "distance_m": distance_m,
-                        }
-                    )
-
-                depth_color = cv2.applyColorMap(
-                    normalize_depth_for_display(depth_m),
-                    cv2.COLORMAP_INFERNO,
-                )
-                ok, preview = cv2.imencode(
-                    ".jpg",
-                    depth_color,
-                    [cv2.IMWRITE_JPEG_QUALITY, 78],
-                )
-                if not ok:
-                    raise RuntimeError("Gagal membuat pratinjau peta depth.")
-                self._send_json(
-                    {
-                        "width": int(frame.shape[1]),
-                        "height": int(frame.shape[0]),
-                        "detections": results,
-                        "depth_preview": base64.b64encode(preview).decode("ascii"),
-                        "inference_ms": inference_ms,
-                    }
-                )
-            except ValueError as error:
-                self._send_json({"error": str(error)}, 400)
-            except Exception as error:
-                self.log_error("Inferensi gagal: %s", error)
-                self._send_json({"error": f"Inferensi gagal: {error}"}, 500)
-
-        def log_message(self, format: str, *args: Any) -> None:
-            super().log_message(format, *args)
-
-    return WebHandler
-
-
-def web_main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Jalankan YOLO26n multitask sebagai web app lokal."
-    )
-    parser.add_argument("--model", default=DEFAULT_MODEL_PATH)
-    parser.add_argument("--metadata", default=DEFAULT_METADATA_PATH)
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
-    args = parser.parse_args()
-
-    if args.host not in {"127.0.0.1", "localhost"}:
-        parser.error("Web lokal hanya boleh bind ke localhost (127.0.0.1).")
-    if not 1 <= args.port <= 65535:
-        parser.error("--port harus berada pada rentang 1 hingga 65535.")
-    for path in (args.model, args.metadata):
-        if not os.path.isfile(path):
-            raise FileNotFoundError(f"File model/metadata tidak ditemukan: {path}")
-
-    model = load_multitask_onnx_model(args.model, args.metadata)
-    server = ThreadingHTTPServer(
-        (args.host, args.port),
-        create_web_handler(model),
-    )
-    print(f"Web app berjalan di http://{args.host}:{args.port}")
-    print("Tekan Ctrl+C di terminal untuk menghentikan server.")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nServer dihentikan.")
-    finally:
-        server.server_close()
-
-
 def main() -> None:
-    """Dispatch the desktop application commands from one entry point."""
+    """Dispatch terminal camera and depth-analysis commands."""
     commands = {
-        "web": web_main,
         "camera": camera_main,
         "evaluate": evaluate_main,
         "validate": validate_main,
@@ -1547,8 +1252,8 @@ def main() -> None:
         "command",
         nargs="?",
         choices=tuple(commands),
-        default="web",
-        help="local web app (default), camera, evaluation, photo validation, or calibration",
+        default="camera",
+        help="camera (default), depth evaluation, photo validation, or calibration",
     )
     arguments = sys.argv[1:]
     if arguments and arguments[0] in commands:
@@ -1556,8 +1261,10 @@ def main() -> None:
     elif arguments and arguments[0] in {"-h", "--help"}:
         parser.print_help()
         return
+    elif arguments:
+        parser.error(f"Perintah tidak dikenal: {arguments[0]}")
     else:
-        command = "web"
+        command = "camera"
     sys.argv = [sys.argv[0], *arguments]
     commands[command]()
 

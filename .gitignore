@@ -6,12 +6,6 @@ __pycache__/
 # Editor-local configuration
 .vscode/
 .idea/
-.gradle/
-local.properties
-
-# Android and Gradle build outputs
-**/build/
-**/.kotlin/
 
 # Logs and temporary files
 *.log

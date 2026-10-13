@@ -1,11 +1,12 @@
 # Projek Computer Vision — YOLO26n-Depth
 
-Proyek ini memakai satu model YOLO26n multitask untuk depth metrik dan deteksi.
-Satu gambar mengalir melalui backbone YOLO26n dan neck FPN/PAN bersama, lalu
-bercabang ke detection head (kotak/kelas) dan depth head (peta jarak). Desktop
-dan Android menjalankan graph deployment yang sama dari hasil training terbaru,
+Proyek ini menjalankan kamera langsung dari terminal VS Code memakai satu model
+YOLO26n multitask untuk depth metrik dan deteksi. Satu gambar mengalir melalui
+backbone YOLO26n dan neck FPN/PAN bersama, lalu bercabang ke detection head
+(kotak/kelas) dan depth head (peta jarak). Kamera memakai graph deployment hasil
+training terbaru, yaitu
 `yolo26n_multitask_coco4_v1_20261013-163528-539afa/inference/multitask.onnx`,
-sehingga deteksi dan depth dihasilkan oleh satu inferensi.
+sehingga deteksi dan depth dihasilkan oleh satu inferensi lokal.
 
 Metadata kontrak model ada di folder `inference/` yang sama. Input ONNX adalah
 float32 NCHW `[1,3,480,640]`. Output `det` berbentuk
@@ -22,23 +23,20 @@ yang berhenti awal pada epoch 18. Angka ini berasal dari satu run dan split
 grouped, serta jumlah/kelas deteksinya berbeda dari run sebelumnya; jangan
 membandingkannya langsung dengan baseline validasi lama.
 
-## Aplikasi web lokal
-
-Jalankan server dari root proyek, lalu buka alamat localhost di browser:
+## Menjalankan kamera dari terminal VS Code
 
 ```powershell
 .\.venv\Scripts\python.exe main.py
 ```
 
-Secara default aplikasi tersedia di `http://127.0.0.1:8000`. Browser akan
-meminta izin kamera; bisa juga pilih foto untuk diuji. Frame diproses oleh
-ONNX hasil training terbaru melalui ONNX Runtime lokal. Server hanya bind ke
-`127.0.0.1`, jadi tidak dibuka ke jaringan.
+Tanpa argumen, program langsung membuka kamera desktop. Tampilan awal dibagi
+dua: deteksi dan jarak tiap objek di kiri, peta depth dan jarak tiap objek di
+kanan. Tekan `s` untuk mengganti tampilan, klik gambar untuk membaca jarak
+titik, dan `q` untuk keluar. Pilih kamera lain dengan `--camera 1`.
 
-Perintah yang tersedia:
+Perintah terminal lain:
 
 ```powershell
-.\.venv\Scripts\python.exe main.py web --port 8000
 .\.venv\Scripts\python.exe main.py camera --help
 .\.venv\Scripts\python.exe main.py evaluate --help
 .\.venv\Scripts\python.exe main.py validate --help
@@ -46,11 +44,7 @@ Perintah yang tersedia:
 .\.venv\Scripts\python.exe -m unittest discover
 ```
 
-Untuk membuka kamera langsung di jendela desktop (tanpa browser), jalankan
-`.\.venv\Scripts\python.exe main.py camera`. Tampilan awal dibagi dua:
-deteksi dan jarak tiap objek di kiri, peta depth dan jarak tiap objek di kanan.
-Jarak titik tengah juga ditampilkan di panel depth. Tekan `s` untuk mengganti
-tampilan, klik gambar untuk membaca jarak titik, dan `q` untuk keluar.
+Jarak titik tengah juga ditampilkan di panel depth.
 Kamera memakai faktor kalibrasi `0.4968` (median rasio) dari sepuluh pasangan
 pengukuran yang diberikan, termasuk pengukuran terbaru yang dicatat setelah
 faktor sebelumnya diterapkan. Bacaan baru 85–86 cm untuk jarak asli 50 cm hanya
@@ -62,9 +56,8 @@ kamera tersebut. Faktor dapat diganti dengan
 `--depth-scale`, misalnya
 `.\.venv\Scripts\python.exe main.py camera --depth-scale 0.60`.
 
-`main.py` menjadi entry point aplikasi Python. `penting/` tetap berisi trainer,
-eksperimen, dan tes; `pendukung/` berisi prototipe. Aplikasi Android masih ada
-sebagai target opsional, tetapi tidak diperlukan untuk menjalankan web lokal.
+`main.py` adalah entry point terminal. Kode trainer, eksperimen, dan tes ada di
+`penting/`; prototipe dan runner tambahan ada di `pendukung/`.
 
 ## Persiapan environment
 
@@ -84,6 +77,10 @@ Inferensi desktop multitask memakai `onnxruntime`; trainer dan eksperimen
 memakai `ultralytics`; visualisasi memakai `matplotlib`; akses NYU MAT memakai
 `h5py`.
 
+ONNX Runtime dan file ONNX multitask tetap diperlukan untuk inferensi kamera
+terminal. Checkpoint `.pt` multitask hanya menyediakan bobot untuk arsitektur
+training yang tidak disertakan sebagai model PyTorch inference di proyek ini.
+
 Di workspace ini, hook Git lokal mencoba menjalankan `git push origin main`
 setelah setiap commit; jika push gagal, commit tetap berhasil dan hook memberi
 peringatan.
@@ -95,11 +92,5 @@ Unduh dataset dari halaman resmi NYU Depth V2:
 <https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html>
 
 Letakkan file `nyu_depth_v2_labeled.mat` di folder `data/` lokal. Semua file
-`.mat` diabaikan Git oleh `.gitignore`; checkpoint model `.pt` yang sudah ada
-tetap dikelola sebagai file proyek karena ukuran masing-masing di bawah 100 MB.
-
-## Catatan mobile
-
-Android memakai sesi ONNX Runtime yang sama dengan desktop. Gradle menyalin
-ONNX hasil training terbaru ke assets saat build; file model tetap lokal dan
-tidak perlu diduplikasi ke source tree.
+`.mat` diabaikan Git oleh `.gitignore`. Checkpoint `.pt` dipakai oleh trainer
+atau alat diagnosis tertentu, bukan oleh kamera multitask live.
