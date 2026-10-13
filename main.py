@@ -25,6 +25,15 @@ import cv2
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+DEFAULT_MODEL_PATH = (
+    "yolo26n_multitask_balanced_v1_20261013-095519-344395/"
+    "inference/multitask.onnx"
+)
+DEFAULT_METADATA_PATH = (
+    "yolo26n_multitask_balanced_v1_20261013-095519-344395/"
+    "inference/model_metadata.json"
+)
+
 # Depth application
 def meters_to_cm(meters: ArrayLike) -> NDArray[np.float32]:
     """Convert meters to centimeters."""
@@ -590,8 +599,8 @@ def evaluate_main() -> None:
         description="Reproduce depth metrics on the deterministic NYU validation split."
     )
     parser.add_argument("--nyu-path", default="data/nyu_depth_v2_labeled.mat")
-    parser.add_argument("--model", default="data/multitask.onnx")
-    parser.add_argument("--metadata", default="data/model_metadata.json")
+    parser.add_argument("--model", default=DEFAULT_MODEL_PATH)
+    parser.add_argument("--metadata", default=DEFAULT_METADATA_PATH)
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--split-seed", type=int, default=42)
@@ -787,8 +796,8 @@ def validate_main() -> None:
         description="Generate a blank template or sample real-distance photos."
     )
     parser.add_argument("--image-dir", default="data/metric_photos")
-    parser.add_argument("--model", default="data/multitask.onnx")
-    parser.add_argument("--metadata", default="data/model_metadata.json")
+    parser.add_argument("--model", default=DEFAULT_MODEL_PATH)
+    parser.add_argument("--metadata", default=DEFAULT_METADATA_PATH)
     parser.add_argument("--output", default="data/metric_validation.csv")
     parser.add_argument("--max-depth-m", type=float, default=10.0)
     parser.add_argument("--patch-size", type=int, default=5)
@@ -1083,12 +1092,12 @@ def camera_main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="data/multitask.onnx",
+        default=DEFAULT_MODEL_PATH,
         help="Single ONNX checkpoint with detection and depth outputs.",
     )
     parser.add_argument(
         "--metadata",
-        default="data/model_metadata.json",
+        default=DEFAULT_METADATA_PATH,
         help="Training metadata for shapes and class labels.",
     )
     parser.add_argument("--camera", type=int, default=0)
@@ -1401,8 +1410,8 @@ def web_main() -> None:
     parser = argparse.ArgumentParser(
         description="Jalankan YOLO26n multitask sebagai web app lokal."
     )
-    parser.add_argument("--model", default="data/multitask.onnx")
-    parser.add_argument("--metadata", default="data/model_metadata.json")
+    parser.add_argument("--model", default=DEFAULT_MODEL_PATH)
+    parser.add_argument("--metadata", default=DEFAULT_METADATA_PATH)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()

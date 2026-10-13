@@ -3,15 +3,22 @@
 Proyek ini memakai satu model YOLO26n multitask untuk depth metrik dan deteksi.
 Satu gambar mengalir melalui backbone YOLO26n dan neck FPN/PAN bersama, lalu
 bercabang ke detection head (kotak/kelas) dan depth head (peta jarak). Desktop
-dan Android menjalankan graph deployment yang sama, `data/multitask.onnx`,
+dan Android menjalankan graph deployment yang sama dari hasil training terbaru,
+`yolo26n_multitask_balanced_v1_20261013-095519-344395/inference/multitask.onnx`,
 sehingga deteksi dan depth dihasilkan oleh satu inferensi.
 
-Checkpoint terlatih `data/multitask_best.pt` diekspor sebagai
-`data/multitask.onnx`; `data/model_metadata.json` menjelaskan kontrak model.
-Input ONNX adalah float32 NCHW `[1,3,480,640]`. Output `det` berbentuk
+Metadata kontrak model ada di folder `inference/` yang sama. Input ONNX adalah
+float32 NCHW `[1,3,480,640]`. Output `det` berbentuk
 `[1,300,6]` dan output `depth` berbentuk `[1,1,480,640]` dalam meter.
 Validasi ekspor ONNX pada metadata menunjukkan perbedaan kecil dari PyTorch,
 tetapi pengukuran jarak tetap perlu diuji pada kamera target.
+
+Evaluasi export baru melaporkan pada split test: depth AbsRel `0.140`,
+RMSE `0.481 m`, delta1 `0.819`; deteksi mAP50 `0.313` dan mAP50-95 `0.208`.
+Angka ini berasal dari satu run dan split grouped, jadi tidak langsung sebanding
+dengan baseline validasi lama. Export memakai checkpoint balanced epoch 17;
+checkpoint depth epoch 25 punya AbsRel validasi lebih rendah, tetapi export
+deployment dipilih memakai metrik gabungan.
 
 ## Aplikasi web lokal
 
@@ -23,7 +30,7 @@ Jalankan server dari root proyek, lalu buka alamat localhost di browser:
 
 Secara default aplikasi tersedia di `http://127.0.0.1:8000`. Browser akan
 meminta izin kamera; bisa juga pilih foto untuk diuji. Frame diproses oleh
-`data/multitask.onnx` melalui ONNX Runtime lokal. Server hanya bind ke
+ONNX hasil training terbaru melalui ONNX Runtime lokal. Server hanya bind ke
 `127.0.0.1`, jadi tidak dibuka ke jaringan.
 
 Perintah yang tersedia:
@@ -76,5 +83,5 @@ tetap dikelola sebagai file proyek karena ukuran masing-masing di bawah 100 MB.
 ## Catatan mobile
 
 Android memakai sesi ONNX Runtime yang sama dengan desktop. Gradle menyalin
-`data/multitask.onnx` ke assets saat build; file model tetap lokal dan tidak
-perlu diduplikasi ke source tree.
+ONNX hasil training terbaru ke assets saat build; file model tetap lokal dan
+tidak perlu diduplikasi ke source tree.

@@ -4,7 +4,10 @@ plugins {
 }
 
 val multitaskModel = rootProject.projectDir
-    .resolve("../../data/multitask.onnx")
+    .resolve(
+        "../../yolo26n_multitask_balanced_v1_20261013-095519-344395/" +
+            "inference/multitask.onnx"
+    )
 val generatedModelAssets = layout.buildDirectory.dir("generated/multitaskModelAssets")
 val syncMultitaskModel = tasks.register<Sync>("syncMultitaskModel") {
     from(multitaskModel)
@@ -12,7 +15,7 @@ val syncMultitaskModel = tasks.register<Sync>("syncMultitaskModel") {
     doFirst {
         require(multitaskModel.isFile) {
             "Combined ONNX model is missing: $multitaskModel. " +
-                "Place multitask.onnx in the repository data folder."
+                "Restore the new training export in its inference folder."
         }
     }
 }
