@@ -978,6 +978,54 @@ def _on_camera_mouse(event: int, x: int, y: int, flags: int, state: dict[str, An
     state["tap_point"] = (x, y)
 
 
+def _draw_split_camera_view(
+    detection_view: NDArray[np.uint8],
+    depth_view: NDArray[np.uint8],
+    depth_m: NDArray[np.float32],
+    patch_size: int,
+) -> NDArray[np.uint8]:
+    """Join detection and depth views, with metric readings visible on both."""
+    if detection_view.shape != depth_view.shape:
+        raise ValueError("Detection and depth views must have the same shape.")
+
+    height, width = detection_view.shape[:2]
+    center_x, center_y = width // 2, height // 2
+    try:
+        center_distance = get_depth_at_point(
+            depth_m, center_x, center_y, patch_size=patch_size
+        )
+        depth_reading = f"Depth tengah: {center_distance:.2f} m"
+    except ValueError:
+        depth_reading = "Depth tengah: tidak valid"
+
+    for panel, title, detail in (
+        (detection_view, "DETEKSI + JARAK", "Jarak tiap objek ditulis pada kotak"),
+        (depth_view, "PETA DEPTH + JARAK", depth_reading),
+    ):
+        cv2.rectangle(panel, (0, 0), (width, 58), (20, 27, 40), thickness=-1)
+        cv2.putText(
+            panel,
+            title,
+            (12, 24),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            panel,
+            detail,
+            (12, 48),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.48,
+            (120, 230, 190),
+            1,
+            cv2.LINE_AA,
+        )
+    return np.hstack((detection_view, depth_view))
+
+
 def run_camera(
     model: MultitaskOnnxModel,
     camera_index: int,
@@ -997,7 +1045,7 @@ def run_camera(
     state: dict[str, Any] = {
         "depth_m": None,
         "frame_width": 0,
-        "side_by_side": False,
+        "side_by_side": True,
         "tap_point": None,
     }
     cv2.namedWindow(title)
@@ -1007,8 +1055,8 @@ def run_camera(
 
     print("Satu model YOLO26n multitask: detection head + depth head")
     print(
-        "Klik untuk mengukur depth titik; d: overlay on/off; "
-        "s: side-by-side; q: keluar."
+        "Tampilan awal split: deteksi + jarak di kiri, depth + jarak di kanan. "
+        "Klik untuk mengukur titik; s: ganti tampilan; d: overlay on/off; q: keluar."
     )
     if debug:
         print(
@@ -1041,6 +1089,17 @@ def run_camera(
             depth_color = cv2.applyColorMap(
                 normalize_depth_for_display(depth_m), cv2.COLORMAP_INFERNO
             )
+            depth_annotated = _draw_detection_overlay(
+                depth_color,
+                detections,
+                model.class_names,
+                depth_m,
+                patch_size,
+                max_depth_m,
+                confidence,
+                class_ids,
+                False,
+            )
 
             if state["tap_point"] is not None:
                 point_x, point_y = state["tap_point"]
@@ -1065,9 +1124,18 @@ def run_camera(
                     2,
                     cv2.LINE_AA,
                 )
+                cv2.circle(
+                    depth_annotated,
+                    (point_x, point_y),
+                    6,
+                    (0, 255, 255),
+                    2,
+                )
 
             if state["side_by_side"]:
-                display = np.hstack((annotated, depth_color))
+                display = _draw_split_camera_view(
+                    annotated, depth_annotated, depth_m, patch_size
+                )
             elif show_depth_overlay:
                 display = cv2.addWeighted(annotated, 0.68, depth_color, 0.32, 0)
             else:

@@ -46,6 +46,12 @@ Perintah yang tersedia:
 .\.venv\Scripts\python.exe -m unittest discover
 ```
 
+Untuk membuka kamera langsung di jendela desktop (tanpa browser), jalankan
+`.\.venv\Scripts\python.exe main.py camera`. Tampilan awal dibagi dua:
+deteksi dan jarak tiap objek di kiri, peta depth dan jarak tiap objek di kanan.
+Jarak titik tengah juga ditampilkan di panel depth. Tekan `s` untuk mengganti
+tampilan, klik gambar untuk membaca jarak titik, dan `q` untuk keluar.
+
 `main.py` menjadi entry point aplikasi Python. `penting/` tetap berisi trainer,
 eksperimen, dan tes; `pendukung/` berisi prototipe. Aplikasi Android masih ada
 sebagai target opsional, tetapi tidak diperlukan untuk menjalankan web lokal.
