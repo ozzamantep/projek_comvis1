@@ -1,24 +1,23 @@
 # Struktur proyek
 
 - `main.py`: aplikasi kamera terminal untuk deteksi objek dan estimasi depth.
+- `multitask_pt.py`: pemuatan checkpoint multitask `.pt` dan inferensi PyTorch.
 - `arsitektur.py`: implementasi PyTorch YOLO26n-Depth dari bagian 3.1-3.2
   laporan; belum dilatih dan tidak digunakan oleh kamera.
-- `requirements.txt`: dependensi minimum aplikasi kamera.
-- `requirements-architecture.txt`: dependensi opsional untuk blueprint PyTorch.
-- `tests/`: tes pemrosesan depth, tampilan kamera, dan inferensi ONNX.
-- `yolo26n_multitask_coco4_v1_20261013-163528-539afa/inference/`: model ONNX
-  aktif beserta metadata kontrak input/output.
+- `requirements.txt`: dependensi aplikasi kamera berbasis PyTorch.
+- `requirements-architecture.txt`: dependensi PyTorch untuk blueprint laporan.
+- `tests/`: tes pemrosesan depth, tampilan kamera, dan preprocessing PyTorch.
 
-`main.py` menangani preprocessing frame, pemanggilan graph ONNX, pemulihan
-koordinat, dan tampilan. Backbone, neck, detection head, serta depth head
-dieksekusi di dalam graph ONNX; detail arsitekturnya bukan layer PyTorch di
-`main.py`. Kontrak model aktif menerima `[1, 3, 480, 640]` dan menghasilkan
-deteksi serta peta depth.
+`multitask_pt.py` memuat checkpoint `multitask_best.pt` secara strict,
+membangun detector YOLO26n dari konfigurasi Ultralytics, dan menjalankan depth
+head dengan bobot pada checkpoint yang sama. Kontrak model menerima
+`[1, 3, 480, 640]`, lalu menghasilkan deteksi terdekode dan depth bermeter.
+Checkpoint `.pt` harus tersedia di root proyek atau diberikan lewat argumen
+`--model`.
 
 `arsitektur.py` menghasilkan head bbox/kelas mentah pada P3/8, P4/16, dan
 P5/32, serta depth relatif `[0, 1]` pada resolusi input 640×640. Ia belum
-memiliki bobot terlatih dan bukan pengganti ONNX kamera, yang menghasilkan
-deteksi terdekode serta depth bermeter pada input 640×480.
+memiliki bobot terlatih dan bukan model yang dipakai kamera.
 
 Jalankan dari root proyek:
 

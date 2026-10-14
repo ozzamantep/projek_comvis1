@@ -1,6 +1,7 @@
 """Untrained YOLO26n-Depth architecture based on Sections 3.1 and 3.2.
 
-This model is independent of the trained ONNX model used by the camera app.
+This report blueprint is independent of the trained checkpoint used by the
+camera app.
 """
 
 from __future__ import annotations
