@@ -16,7 +16,7 @@ from multitask_pt import MultitaskTorchModel, load_multitask_torch_model
 
 DEFAULT_MODEL_PATH = "multitask_best.pt"
 DEFAULT_CAMERA_DEPTH_SCALE = 0.9935897436
-DEFAULT_CAMERA_DEPTH_OFFSET_M = -1.2
+DEFAULT_CAMERA_DEPTH_OFFSET_M = -1.0
 
 # Depth application
 def meters_to_cm(meters: ArrayLike) -> NDArray[np.float32]:

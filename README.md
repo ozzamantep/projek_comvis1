@@ -27,11 +27,12 @@ Kamera selain perangkat default dapat dipilih, misalnya:
 .\.venv\Scripts\python.exe main.py --camera 1
 ```
 
-Kalibrasi kamera saat ini menggunakan transformasi `jarak x 0.9936 - 1.2 m`,
-berdasarkan pengukuran 60 cm → 90 cm dan 80 cm → 100 cm sebelum kalibrasi ini.
-Offset dapat disetel dengan `--depth-offset-m`, sedangkan faktor skala dapat
-disetel dengan `--depth-scale`. Kalibrasi ini khusus untuk kamera dan setup
-pengukuran tersebut.
+Kalibrasi kamera saat ini menggunakan transformasi `jarak x 0.9936 - 1.0 m`.
+Offset dinaikkan 20 cm setelah pembacaan 40 cm pada jarak aktual 60 cm.
+Kalibrasi ini hanya menambahkan koreksi pada titik pengukuran tersebut;
+pengukuran lain yang pernah dicatat belum konsisten, jadi akurasi pada jarak
+lain belum tervalidasi. Offset dapat disetel dengan `--depth-offset-m`,
+sedangkan faktor skala dapat disetel dengan `--depth-scale`.
 
 ## Model
 

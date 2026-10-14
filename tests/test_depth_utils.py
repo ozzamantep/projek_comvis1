@@ -16,19 +16,18 @@ from main import (
 
 
 class DepthUtilsTests(unittest.TestCase):
-    def test_webcam_depth_calibration_matches_latest_measurements(self):
-        previous_scale = 0.4967948718
-        calibrated = calibrate_depth_map(
-            np.array([[0.9, 1.0]], dtype=np.float32) / previous_scale
+    def test_webcam_depth_calibration_applies_latest_measurement(self):
+        previous_offset = DEFAULT_CAMERA_DEPTH_OFFSET_M - 0.2
+        raw_depth = np.array(
+            [[(0.4 - previous_offset) / DEFAULT_CAMERA_DEPTH_SCALE]],
+            dtype=np.float32,
         )
-        np.testing.assert_allclose(
-            calibrated, np.array([[0.6, 0.8]], dtype=np.float32),
-            rtol=1e-6,
-        )
+        calibrated = calibrate_depth_map(raw_depth)
+        np.testing.assert_allclose(calibrated, np.array([[0.6]], dtype=np.float32))
         self.assertAlmostEqual(
             DEFAULT_CAMERA_DEPTH_SCALE, 0.9935897436, places=8
         )
-        self.assertAlmostEqual(DEFAULT_CAMERA_DEPTH_OFFSET_M, -1.2, places=8)
+        self.assertAlmostEqual(DEFAULT_CAMERA_DEPTH_OFFSET_M, -1.0, places=8)
 
     def test_depth_calibration_rejects_non_positive_or_non_finite_scale(self):
         for scale in (0.0, -1.0, np.nan, np.inf):
