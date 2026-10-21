@@ -1,7 +1,6 @@
-"""Untrained YOLO26n-Depth architecture based on Sections 3.1 and 3.2.
+"""Custom YOLO26n-Depth blueprint from report Sections 3.1 and 3.2.
 
-This report blueprint is independent of the trained checkpoint used by the
-camera app.
+The implementation follows the model blocks described in the report.
 """
 
 from __future__ import annotations
@@ -11,15 +10,6 @@ import argparse
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
-
-
-def _scaled_channels(
-    base_channels: int,
-    width_mult: float,
-    minimum: int,
-    max_channels: int,
-) -> int:
-    return max(minimum, min(int(base_channels * width_mult), max_channels))
 
 
 class ConvBlock(nn.Module):
@@ -50,6 +40,15 @@ class ConvBlock(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.act(self.bn(self.conv(x)))
+
+
+def _scaled_channels(
+    base_channels: int,
+    width_mult: float,
+    minimum: int,
+    max_channels: int,
+) -> int:
+    return max(minimum, min(int(base_channels * width_mult), max_channels))
 
 
 class Bottleneck(nn.Module):
@@ -241,8 +240,11 @@ class DepthHead(nn.Module):
         return self.refine(torch.cat((up_p3, up_p4, up_p5), dim=1))
 
 
+ARCHITECTURE_ID = "report-blueprint-3.1-3.2-v1"
+
+
 class YOLO26nDepth(nn.Module):
-    """Report-aligned detector/depth blueprint; it has no trained weights."""
+    """Report-aligned detector/depth blueprint; it has no pretrained weights."""
 
     def __init__(
         self,
@@ -264,11 +266,7 @@ class YOLO26nDepth(nn.Module):
         c_p5 = _scaled_channels(1024, width_mult, 256, max_channels)
         n_repeat = max(1, round(2 * depth_mult))
 
-        self.backbone = Backbone(
-            c_stem,
-            (c_p2, c_p3, c_p4, c_p5),
-            n_repeat,
-        )
+        self.backbone = Backbone(c_stem, (c_p2, c_p3, c_p4, c_p5), n_repeat)
         self.neck = Neck((c_p3, c_p4, c_p5), n_repeat)
         self.detect_p3 = DetectionHead(c_p3, num_classes)
         self.detect_p4 = DetectionHead(c_p4, num_classes)
@@ -305,7 +303,7 @@ def build_model(
     width_mult: float = 0.25,
     depth_mult: float = 0.50,
 ) -> YOLO26nDepth:
-    """Build the report's Nano-scale model for the project's four object classes."""
+    """Build the report's Nano-scale model for the project's object classes."""
     return YOLO26nDepth(
         num_classes=num_classes,
         width_mult=width_mult,

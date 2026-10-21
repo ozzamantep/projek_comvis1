@@ -1,3 +1,5 @@
-# Optional dependency for verifying the standalone architecture blueprint.
-# The camera runtime installs PyTorch through requirements.txt.
+# Dependencies for verifying and training the report-aligned blueprint.
+# The camera runtime installs these through requirements.txt.
+numpy
+opencv-python
 torch

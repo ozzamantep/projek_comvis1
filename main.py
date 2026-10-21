@@ -1,4 +1,4 @@
-"""Terminal camera app for multitask detection and metric depth."""
+"""Terminal camera app for multitask detection and depth estimation."""
 
 from __future__ import annotations
 
@@ -10,8 +10,13 @@ from typing import Any, NamedTuple
 
 import cv2
 import numpy as np
+import torch
 from numpy.typing import ArrayLike, NDArray
 
+from architecture_pt import (
+    ArchitectureTorchModel,
+    load_architecture_torch_model,
+)
 from multitask_pt import MultitaskTorchModel, load_multitask_torch_model
 
 DEFAULT_MODEL_PATH = "multitask_best.pt"
@@ -197,6 +202,7 @@ def _draw_detection_overlay(
     confidence: float,
     class_ids: list[int] | None,
     debug: bool,
+    depth_label: str = "m",
 ) -> np.ndarray:
     annotated = frame.copy()
     height, width = frame.shape[:2]
@@ -220,7 +226,9 @@ def _draw_detection_overlay(
         try:
             distance_m = get_depth_in_bbox(depth_m, (x1, y1, x2, y2), patch_size)
             distance_cm = float(meters_to_cm(distance_m))
-            distance_text = f"{distance_m:.2f} m / {distance_cm:.0f} cm"
+            distance_text = (
+                f"{distance_m:.2f} {depth_label} / {distance_cm:.0f} cm"
+            )
         except ValueError:
             distance_m = None
             distance_text = "depth tidak valid"
@@ -302,6 +310,7 @@ def _draw_split_camera_view(
     depth_view: NDArray[np.uint8],
     depth_m: NDArray[np.float32],
     patch_size: int,
+    depth_label: str = "m",
 ) -> NDArray[np.uint8]:
     """Join detection and depth views, with metric readings visible on both."""
     if detection_view.shape != depth_view.shape:
@@ -313,7 +322,7 @@ def _draw_split_camera_view(
         center_distance = get_depth_at_point(
             depth_m, center_x, center_y, patch_size=patch_size
         )
-        depth_reading = f"Depth tengah: {center_distance:.2f} m"
+        depth_reading = f"Depth tengah: {center_distance:.2f} {depth_label}"
     except ValueError:
         depth_reading = "Depth tengah: tidak valid"
 
@@ -346,7 +355,7 @@ def _draw_split_camera_view(
 
 
 def run_camera(
-    model: MultitaskTorchModel,
+    model: MultitaskTorchModel | ArchitectureTorchModel,
     camera_index: int,
     confidence: float,
     class_ids: list[int] | None,
@@ -355,6 +364,7 @@ def run_camera(
     debug: bool,
     depth_scale: float,
     depth_offset_m: float,
+    depth_label: str,
 ) -> None:
     camera = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
     if not camera.isOpened():
@@ -362,7 +372,7 @@ def run_camera(
     if not camera.isOpened():
         raise RuntimeError(f"Kamera index {camera_index} tidak dapat dibuka.")
 
-    title = "YOLO26n multitask detection + metric depth"
+    title = "YOLO26n detection + depth estimation"
     state: dict[str, Any] = {
         "depth_m": None,
         "frame_width": 0,
@@ -379,10 +389,9 @@ def run_camera(
         "Tampilan awal split: deteksi + jarak di kiri, depth + jarak di kanan. "
         "Klik untuk mengukur titik; s: ganti tampilan; d: overlay on/off; q: keluar."
     )
-    print(
-        "Kalibrasi depth kamera: "
-        f"x{depth_scale:.4f} {depth_offset_m:+.2f} m"
-    )
+    print(f"Post-processing depth: x{depth_scale:.4f} {depth_offset_m:+.2f} m")
+    if depth_label != "m":
+        print("Depth adalah perkiraan model dan belum dikalibrasi terhadap kamera.")
     if debug:
         print(
             "Debug aktif: nilai raw di center bbox, ukuran patch efektif, "
@@ -412,6 +421,7 @@ def run_camera(
                 confidence,
                 class_ids,
                 debug,
+                depth_label,
             )
             depth_color = cv2.applyColorMap(
                 normalize_depth_for_display(depth_m), cv2.COLORMAP_INFERNO
@@ -426,6 +436,7 @@ def run_camera(
                 confidence,
                 class_ids,
                 False,
+                depth_label,
             )
 
             if state["tap_point"] is not None:
@@ -436,7 +447,8 @@ def run_camera(
                     )
                     point_cm = float(meters_to_cm(point_depth))
                     tap_text = (
-                        f"Tap: {point_depth:.2f} m / {point_cm:.0f} cm"
+                        f"Tap: {point_depth:.2f} {depth_label} / "
+                        f"{point_cm:.0f} cm"
                     )
                     cv2.circle(annotated, (point_x, point_y), 6, (0, 255, 255), 2)
                 except ValueError:
@@ -461,7 +473,7 @@ def run_camera(
 
             if state["side_by_side"]:
                 display = _draw_split_camera_view(
-                    annotated, depth_annotated, depth_m, patch_size
+                    annotated, depth_annotated, depth_m, patch_size, depth_label
                 )
             elif show_depth_overlay:
                 display = cv2.addWeighted(annotated, 0.68, depth_color, 0.32, 0)
@@ -483,7 +495,7 @@ def run_camera(
 
 def camera_main() -> None:
     parser = argparse.ArgumentParser(
-        description="Single YOLO26n multitask model for detections and metric depth"
+        description="Single YOLO26n multitask model for detection and depth estimation"
     )
     parser.add_argument(
         "--model",
@@ -506,18 +518,23 @@ def camera_main() -> None:
         help='Hanya tampilkan kelas dari model, misalnya --classes chair "dining table".',
     )
     parser.add_argument("--patch-size", type=int, default=15)
-    parser.add_argument("--max-depth-m", type=float, default=10.0)
+    parser.add_argument(
+        "--max-depth-m",
+        type=float,
+        default=None,
+        help="Batas depth tampilan (default mengikuti checkpoint).",
+    )
     parser.add_argument(
         "--depth-scale",
         type=float,
-        default=DEFAULT_CAMERA_DEPTH_SCALE,
-        help="Faktor skala depth webcam (default: x0.9936).",
+        default=None,
+        help="Faktor skala depth (default checkpoint lama: x0.9936; arsitektur baru: x1.0).",
     )
     parser.add_argument(
         "--depth-offset-m",
         type=float,
-        default=DEFAULT_CAMERA_DEPTH_OFFSET_M,
-        help="Offset depth webcam dalam meter (default: -1.2 m).",
+        default=None,
+        help="Offset depth dalam meter (default checkpoint lama: -1.0 m; arsitektur baru: 0 m).",
     )
     parser.add_argument(
         "--debug",
@@ -532,14 +549,45 @@ def camera_main() -> None:
         parser.error("--confidence harus berada pada rentang [0, 1].")
     if args.patch_size < 1 or args.patch_size % 2 == 0:
         parser.error("--patch-size harus bilangan ganjil positif.")
-    if not np.isfinite(args.max_depth_m) or args.max_depth_m <= 0:
+    checkpoint = torch.load(args.model, map_location="cpu", weights_only=True)
+    if not isinstance(checkpoint, dict):
+        parser.error("Format checkpoint tidak valid.")
+    checkpoint_kind = checkpoint.get("kind")
+    if checkpoint_kind == "arsitektur_multitask":
+        model: MultitaskTorchModel | ArchitectureTorchModel = (
+            load_architecture_torch_model(args.model)
+        )
+        default_depth_scale = 1.0
+        default_depth_offset_m = 0.0
+        default_max_depth_m = model.depth_max_m
+        depth_label = "m (perkiraan)"
+    elif checkpoint_kind == "inference_multitask":
+        model = load_multitask_torch_model(args.model)
+        default_depth_scale = DEFAULT_CAMERA_DEPTH_SCALE
+        default_depth_offset_m = DEFAULT_CAMERA_DEPTH_OFFSET_M
+        default_max_depth_m = 10.0
+        depth_label = "m"
+    else:
+        parser.error(f"Jenis checkpoint tidak didukung: {checkpoint_kind!r}.")
+
+    max_depth_m = (
+        args.max_depth_m if args.max_depth_m is not None else default_max_depth_m
+    )
+    depth_scale = (
+        args.depth_scale if args.depth_scale is not None else default_depth_scale
+    )
+    depth_offset_m = (
+        args.depth_offset_m
+        if args.depth_offset_m is not None
+        else default_depth_offset_m
+    )
+    if not np.isfinite(max_depth_m) or max_depth_m <= 0:
         parser.error("--max-depth-m harus bernilai positif.")
-    if not np.isfinite(args.depth_scale) or args.depth_scale <= 0:
+    if not np.isfinite(depth_scale) or depth_scale <= 0:
         parser.error("--depth-scale harus bernilai positif.")
-    if not np.isfinite(args.depth_offset_m):
+    if not np.isfinite(depth_offset_m):
         parser.error("--depth-offset-m harus bernilai finite.")
 
-    model = load_multitask_torch_model(args.model)
     try:
         class_ids = resolve_class_ids(model.class_names, args.classes)
     except (TypeError, ValueError) as error:
@@ -551,10 +599,11 @@ def camera_main() -> None:
         args.confidence,
         class_ids,
         args.patch_size,
-        args.max_depth_m,
+        max_depth_m,
         args.debug,
-        args.depth_scale,
-        args.depth_offset_m,
+        depth_scale,
+        depth_offset_m,
+        depth_label,
     )
 
 
