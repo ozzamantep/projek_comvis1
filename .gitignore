@@ -20,3 +20,9 @@ __pycache__/
 
 # MATLAB datasets
 *.mat
+
+datasets/
+.venv/
+data/
+training_runs/
+runs/

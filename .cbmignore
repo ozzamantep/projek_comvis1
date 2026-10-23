@@ -1,0 +1,7 @@
+﻿datasets/
+.venv/
+data/
+.git/
+__pycache__/
+training_runs/
+runs/

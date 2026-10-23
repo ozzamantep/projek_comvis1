@@ -3,3 +3,5 @@
 numpy
 opencv-python
 torch
+ijson
+ultralytics==8.4.175

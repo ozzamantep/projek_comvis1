@@ -12,10 +12,14 @@ import cv2
 import numpy as np
 import torch
 
+from arsitektur import build_model
 from train_arsitektur import (
     ActivityIndicator,
     COCO_ANNOTATIONS_URL,
     COCO_IMAGES_URL,
+    Record,
+    _YOLO26_PRETRAINED_LAYERS,
+    _transfer_yolo26_backbone_neck,
     _download_file,
     build_detection_targets,
     compute_losses,
@@ -24,11 +28,182 @@ from train_arsitektur import (
     ensure_coco_annotations,
     ensure_sun_dataset,
     _focal_classification_loss,
+    _evaluate_model,
+    initialize_from_checkpoint,
     prepare_sample,
+    split_coco_records,
+    split_sun_records,
 )
+from ultralytics.nn.tasks import DetectionModel
 
 
 class ArchitectureTrainingTests(unittest.TestCase):
+    def test_evaluation_reports_depth_mae_in_metres(self):
+        class FixedDepthModel(torch.nn.Module):
+            def forward(self, images, use_nms=True):
+                batch_size = images.shape[0]
+                outputs = {}
+                for prefix, side in (("p3", 4), ("p4", 2), ("p5", 1)):
+                    outputs[f"{prefix}_cls"] = torch.zeros(
+                        (batch_size, 1, side, side)
+                    )
+                    outputs[f"{prefix}_bbox"] = torch.zeros(
+                        (batch_size, 4, side, side)
+                    )
+                outputs["depth"] = torch.full(
+                    (batch_size, 1, 32, 32), 0.25
+                )
+                return outputs
+
+        images = torch.zeros((1, 3, 32, 32))
+        depths = torch.full((1, 32, 32), 0.5)
+        empty_boxes = torch.empty((0, 5))
+        loader = [(images, depths, [empty_boxes])]
+
+        metrics = _evaluate_model(
+            FixedDepthModel(),
+            loader,
+            torch.device("cpu"),
+            10.0,
+            "test",
+        )
+
+        self.assertAlmostEqual(metrics["depth_mae_m"], 2.5)
+        self.assertEqual(metrics["depth_valid_pixels"], 32 * 32)
+
+    def test_sun_train_validation_test_split_is_deterministic_and_grouped(self):
+        records = [
+            Record(
+                image_path=Path(f"scene-{group}-{frame}.jpg"),
+                depth_path=Path(f"scene-{group}-{frame}.png"),
+                boxes=((0.0, 0.0, 1.0, 1.0, 0),),
+                group=f"scene-{group}",
+            )
+            for group in range(10)
+            for frame in range(2)
+        ]
+
+        train, validation, test = split_sun_records(records, 0.1, 0.1, 42)
+        train_groups = {record.group for record in train}
+        validation_groups = {record.group for record in validation}
+        test_groups = {record.group for record in test}
+
+        self.assertTrue(train_groups.isdisjoint(validation_groups))
+        self.assertTrue(train_groups.isdisjoint(test_groups))
+        self.assertTrue(validation_groups.isdisjoint(test_groups))
+        self.assertEqual(len(train) + len(validation) + len(test), len(records))
+        self.assertEqual(
+            [record.image_path for record in test],
+            [
+                record.image_path
+                for record in split_sun_records(records, 0.1, 0.1, 42)[2]
+            ],
+        )
+        self.assertEqual(len(validation), 2)
+        self.assertEqual(len(test), 2)
+
+    def test_sun_three_way_split_rejects_invalid_fractions(self):
+        with self.assertRaises(ValueError):
+            split_sun_records([], 0.8, 0.2, 42)
+
+    def test_coco_train_validation_test_split_is_deterministic_and_grouped(self):
+        records = [
+            Record(
+                image_path=Path(f"coco-{image_id}.jpg"),
+                depth_path=None,
+                boxes=((0.0, 0.0, 1.0, 1.0, 0),),
+                group=f"coco/{image_id}",
+            )
+            for image_id in range(100)
+        ]
+
+        train, validation, test = split_coco_records(records, 0.2, 0.1, 42)
+        train_groups = {record.group for record in train}
+        validation_groups = {record.group for record in validation}
+        test_groups = {record.group for record in test}
+
+        self.assertTrue(train_groups.isdisjoint(validation_groups))
+        self.assertTrue(train_groups.isdisjoint(test_groups))
+        self.assertTrue(validation_groups.isdisjoint(test_groups))
+        self.assertEqual((len(train), len(validation), len(test)), (70, 20, 10))
+        self.assertEqual(
+            [record.image_path for record in test],
+            [
+                record.image_path
+                for record in split_coco_records(records, 0.2, 0.1, 42)[2]
+            ],
+        )
+
+    def test_pretrained_yolo26_weights_transfer_to_matching_backbone_and_neck(self):
+        pretrained = DetectionModel("yolo26n.yaml", nc=4, verbose=False).eval()
+        model = build_model(num_classes=4).eval()
+
+        transferred = _transfer_yolo26_backbone_neck(model, pretrained)
+
+        expected_count = 0
+        for target_name, source_index in _YOLO26_PRETRAINED_LAYERS:
+            source_state = pretrained.model[source_index].state_dict()
+            mapped_state = {
+                ".".join(
+                    {
+                        "m": "blocks",
+                        "attn": "attention",
+                        "pe": "position",
+                    }.get(part, part)
+                    for part in key.split(".")
+                ): value
+                for key, value in source_state.items()
+            }
+            target_state = model.get_submodule(target_name).state_dict()
+            expected_count += len(mapped_state)
+            self.assertEqual(target_state.keys(), mapped_state.keys())
+            for key, value in mapped_state.items():
+                torch.testing.assert_close(target_state[key], value)
+
+        self.assertEqual(transferred, expected_count)
+
+    def test_finetune_checkpoint_loads_weights_without_optimizer_state(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            checkpoint_path = Path(temporary_directory) / "last.pt"
+            source_model = build_model(num_classes=1)
+            expected_state = {
+                key: value.clone() for key, value in source_model.state_dict().items()
+            }
+            torch.save(
+                {
+                    "kind": "arsitektur_multitask",
+                    "architecture_id": "ultralytics-yolo26n-backbone-neck-project-heads-v2",
+                    "classes": ["person"],
+                    "imgsz": [64, 96],
+                    "depth_max_m": 10.0,
+                    "width_mult": 0.25,
+                    "depth_mult": 0.5,
+                    "model_state_dict": expected_state,
+                    "optimizer_state_dict": {"stale": True},
+                    "scheduler_state_dict": {"stale": True},
+                },
+                checkpoint_path,
+            )
+            target_model = build_model(num_classes=1)
+            for parameter in target_model.parameters():
+                parameter.data.zero_()
+
+            initialize_from_checkpoint(
+                target_model,
+                checkpoint_path,
+                {
+                    "kind": "arsitektur_multitask",
+                    "classes": ["person"],
+                    "imgsz": [64, 96],
+                    "depth_max_m": 10.0,
+                    "width_mult": 0.25,
+                    "depth_mult": 0.5,
+                },
+            )
+
+        for key, value in target_model.state_dict().items():
+            torch.testing.assert_close(value, expected_state[key])
+
     def test_focal_classification_loss_keeps_sparse_positive_labels_significant(self):
         logits = torch.zeros(1, 1, 80, 80, requires_grad=True)
         targets = torch.zeros_like(logits)
@@ -232,6 +407,58 @@ class ArchitectureTrainingTests(unittest.TestCase):
         self.assertTrue(
             all(record.image_path.parent.name == "train2017" for record in records)
         )
+
+    def test_coco_local_only_filters_missing_files_and_matches_class_aliases(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            image_dir = root / "train2017"
+            annotations_dir = root / "annotations"
+            image_dir.mkdir()
+            annotations_dir.mkdir()
+            available = image_dir / "000000000001.jpg"
+            self.assertTrue(
+                cv2.imwrite(str(available), np.zeros((32, 32, 3), dtype=np.uint8))
+            )
+            images = [
+                {
+                    "id": image_id,
+                    "width": 32,
+                    "height": 32,
+                    "file_name": f"{image_id:012d}.jpg",
+                }
+                for image_id in (1, 2)
+            ]
+            annotation_path = annotations_dir / "instances_train2017.json"
+            annotation_path.write_text(
+                json.dumps(
+                    {
+                        "images": images,
+                        "categories": [{"id": 3, "name": "cell phone"}],
+                        "annotations": [
+                            {
+                                "image_id": image["id"],
+                                "category_id": 3,
+                                "bbox": [4, 5, 12, 15],
+                                "iscrowd": 0,
+                            }
+                            for image in images
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            records = discover_coco_records(
+                root,
+                annotation_path,
+                ("cellphone",),
+                max_records=2,
+                local_only=True,
+            )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].image_path, available)
+        self.assertEqual(records[0].boxes[0][-1], 0)
 
     def test_sun_discovery_skips_invalid_annotation_and_keeps_valid_scenes(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -26,6 +26,24 @@ class FakeArchitecture(nn.Module):
         return outputs
 
 
+class ConfidenceArchitecture(nn.Module):
+    def forward(self, image: Tensor) -> dict[str, Tensor]:
+        batch, _, height, width = image.shape
+        outputs = {}
+        for stride, level in ((8, "p3"), (16, "p4"), (32, "p5")):
+            level_height, level_width = height // stride, width // stride
+            outputs[f"{level}_bbox"] = torch.zeros(
+                batch, 4, level_height, level_width
+            )
+            outputs[f"{level}_cls"] = torch.full(
+                (batch, 1, level_height, level_width), -10.0
+            )
+        outputs["p3_cls"][0, 0, 2, 2] = 0.0
+        outputs["p3_cls"][0, 0, 5, 5] = 2.0
+        outputs["depth"] = torch.full((batch, 1, height, width), 0.5)
+        return outputs
+
+
 class ArchitectureInferenceTests(unittest.TestCase):
     def test_decode_detections_converts_cell_offsets_to_xyxy(self):
         outputs = {
@@ -61,6 +79,23 @@ class ArchitectureInferenceTests(unittest.TestCase):
         np.testing.assert_allclose(detections[0, :4], [80, 40, 84, 44])
         self.assertEqual(depth.shape, (240, 320))
         np.testing.assert_allclose(depth, 5.0)
+
+    def test_predict_uses_confidence_threshold_before_nms(self):
+        model = ArchitectureTorchModel(
+            ConfidenceArchitecture(),
+            class_names=("person",),
+            input_height=64,
+            input_width=64,
+            depth_max_m=10.0,
+            device=torch.device("cpu"),
+        )
+
+        detections, _ = model.predict(
+            np.zeros((64, 64, 3), dtype=np.uint8), confidence=0.8
+        )
+
+        self.assertEqual(detections.shape, (1, 6))
+        self.assertGreater(float(detections[0, 4]), 0.8)
 
     def test_loader_accepts_report_blueprint_checkpoint(self):
         from architecture_pt import load_architecture_torch_model

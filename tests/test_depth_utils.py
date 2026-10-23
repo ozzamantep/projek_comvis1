@@ -10,7 +10,6 @@ from main import (
     get_depth_at_point,
     get_depth_in_bbox,
     get_depth_patch_stats,
-    meters_to_cm,
     normalize_depth_for_display,
 )
 

@@ -141,7 +141,9 @@ class ArchitectureTorchModel:
         self.depth_max_m = depth_max_m
 
     def predict(
-        self, frame_bgr: NDArray[np.uint8]
+        self,
+        frame_bgr: NDArray[np.uint8],
+        confidence: float = DEFAULT_CONFIDENCE,
     ) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         if frame_bgr.ndim != 3 or frame_bgr.shape[2] != 3:
             raise ValueError("frame_bgr must be a three-channel BGR image.")
@@ -175,10 +177,15 @@ class ArchitectureTorchModel:
         image = image_rgb.transpose(2, 0, 1)[None].astype(np.float32) / 255.0
         input_tensor = torch.from_numpy(image).to(self.device)
 
-        with torch.inference_mode():
+        use_amp = self.device.type == "cuda"
+        with torch.inference_mode(), torch.autocast(
+            device_type=self.device.type,
+            dtype=torch.float16,
+            enabled=use_amp,
+        ):
             outputs = self.model(input_tensor)
         detections = decode_detections(
-            outputs, self.input_height, self.input_width
+            outputs, self.input_height, self.input_width, confidence=confidence
         )
         if detections.size:
             detections[:, (0, 2)] = (

@@ -404,7 +404,10 @@ def run_camera(
             if not ok:
                 raise RuntimeError("Gagal membaca frame dari kamera.")
 
-            detections, depth_m = model.predict(frame)
+            if isinstance(model, ArchitectureTorchModel):
+                detections, depth_m = model.predict(frame, confidence=confidence)
+            else:
+                detections, depth_m = model.predict(frame)
             depth_m = calibrate_depth_map(
                 smoother.update(depth_m), depth_scale, depth_offset_m
             )
