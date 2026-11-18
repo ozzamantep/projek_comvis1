@@ -1,0 +1,83 @@
+{
+  "plus_attention": {
+    "model": "+Attention (YOLO26nDepth, best.pt Ep.56)",
+    "img_size": "384x640",
+    "map50": 0.3086723925706566,
+    "map50_95": 0.17960283281734224,
+    "precision": 0.00860368148072816,
+    "recall": 0.7862453531598513,
+    "per_class_ap50": {
+      "person": 0.5176307511366588,
+      "laptop": 0.4312179733918379,
+      "cell phone": 0.10266627923807342,
+      "bottle": 0.18317456651605618
+    },
+    "per_class_ap50_95": {
+      "person": 0.29740635031852036,
+      "laptop": 0.2934091807095385,
+      "cell phone": 0.04621222793148737,
+      "bottle": 0.0813835723098228
+    },
+    "ground_truth_boxes": 538,
+    "evaluated_classes": 4,
+    "depth_mae_m": 0.5325266911542369,
+    "abs_rel": 0.2731388409364117,
+    "rmse_m": 0.7415706135435259,
+    "delta1": 0.6061487675077076,
+    "valid_pixels": 35687282
+  },
+  "legacy": {
+    "model": "Legacy Runtime (multitask_best.pt, Ep.10)",
+    "img_size": "480x640",
+    "map50": 0.657107920275055,
+    "map50_95": 0.43899711128642327,
+    "precision": 0.0061090909090909095,
+    "recall": 0.9368029739776952,
+    "per_class_ap50": {
+      "person": 0.7430121310518756,
+      "laptop": 0.7753517273893932,
+      "cell phone": 0.5992389838990071,
+      "bottle": 0.5108288387599447
+    },
+    "per_class_ap50_95": {
+      "person": 0.49084824089020085,
+      "laptop": 0.6305300798128974,
+      "cell phone": 0.3712671130215524,
+      "bottle": 0.26334301142104255
+    },
+    "ground_truth_boxes": 538,
+    "evaluated_classes": 4,
+    "depth_mae_m": 0.35430917453756133,
+    "abs_rel": 0.15800316156055216,
+    "rmse_m": 0.5557542370968811,
+    "delta1": 0.7758976190382217,
+    "valid_pixels": 44085462
+  },
+  "baseline_noattn": {
+    "model": "Baseline (Tanpa Attention, NoAttn)",
+    "img_size": "384x640",
+    "map50": 0.26535509929003154,
+    "map50_95": 0.13965816143109583,
+    "precision": 0.008683700880864622,
+    "recall": 0.775092936802974,
+    "per_class_ap50": {
+      "person": 0.47187209019217424,
+      "laptop": 0.29119018351183457,
+      "cell phone": 0.08328555643809908,
+      "bottle": 0.21507256701801813
+    },
+    "per_class_ap50_95": {
+      "person": 0.24605447884591056,
+      "laptop": 0.16577810537283932,
+      "cell phone": 0.05014245409017104,
+      "bottle": 0.09665760741546234
+    },
+    "ground_truth_boxes": 538,
+    "evaluated_classes": 4,
+    "depth_mae_m": 0.5426912528920448,
+    "abs_rel": 0.27331131273799214,
+    "rmse_m": 0.7603172210655731,
+    "delta1": 0.5841591130420075,
+    "valid_pixels": 35687282
+  }
+}

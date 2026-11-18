@@ -1,0 +1,4 @@
+Model,Input,mAP@0.5 (%),mAP@0.5:0.95 (%),Precision (%),Recall (%),Depth MAE (m),AbsRel,RMSE (m),delta1 (%)
+"Baseline (Tanpa Attention, NoAttn)",384x640,26.54,13.97,0.87,77.51,0.543,0.273,0.760,58.42
+"+Attention (YOLO26nDepth, best.pt Ep.56)",384x640,30.87,17.96,0.86,78.62,0.533,0.273,0.742,60.61
+"Legacy Runtime (multitask_best.pt, Ep.10)",480x640,65.71,43.90,0.61,93.68,0.354,0.158,0.556,77.59

@@ -1,0 +1,51 @@
+[
+  {
+    "scenario": "class_person",
+    "image": "NYU0850.jpg",
+    "source": "SUN RGB-D",
+    "gt_box_depth_m": 4.168,
+    "pred_box_depth_m": 4.113,
+    "baseline_file": "docs\\figures\\testset_samples\\testset_person_baseline.png",
+    "legacy_file": "docs\\figures\\testset_samples\\testset_person_legacy.png"
+  },
+  {
+    "scenario": "class_laptop",
+    "image": "NYU0146.jpg",
+    "source": "SUN RGB-D",
+    "gt_box_depth_m": 1.89,
+    "pred_box_depth_m": 2.127,
+    "baseline_file": "docs\\figures\\testset_samples\\testset_laptop_baseline.png",
+    "legacy_file": "docs\\figures\\testset_samples\\testset_laptop_legacy.png"
+  },
+  {
+    "scenario": "class_cell phone",
+    "image": "000000352073.jpg",
+    "source": "COCO",
+    "gt_box_depth_m": null,
+    "pred_box_depth_m": null,
+    "baseline_file": "docs\\figures\\testset_samples\\testset_cell_phone_baseline.png",
+    "legacy_file": "docs\\figures\\testset_samples\\testset_cell_phone_legacy.png"
+  },
+  {
+    "scenario": "class_bottle",
+    "image": "NYU0127.jpg",
+    "source": "SUN RGB-D",
+    "gt_box_depth_m": 2.02,
+    "pred_box_depth_m": 1.537,
+    "baseline_file": "docs\\figures\\testset_samples\\testset_bottle_baseline.png",
+    "legacy_file": "docs\\figures\\testset_samples\\testset_bottle_legacy.png"
+  },
+  {
+    "scenario": "fail_small_cellphone",
+    "image": "000000170716.jpg",
+    "source": "COCO",
+    "file": "docs\\figures\\testset_samples\\testset_fail_small_cellphone.png"
+  },
+  {
+    "scenario": "multi_object_clutter",
+    "image": "NYU0121.jpg",
+    "source": "SUN RGB-D",
+    "gt_boxes": 16,
+    "file": "docs\\figures\\testset_samples\\testset_multi_object_clutter.png"
+  }
+]

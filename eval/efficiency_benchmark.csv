@@ -1,0 +1,10 @@
+model,input_res,params_m,gflops,size_mb,latency_cpu_ms,latency_gpu_ms,fps_cpu,fps_gpu
+Baseline (YOLO26nDepth),480x640,3.863,25.562,14.98,151.44,11.48,6.6,87.1
+"Baseline (YOLO26nDepth, 384x640)",384x640,3.863,20.449,14.98,131.75,9.91,7.6,100.9
++Attention Neck Only (+CBAM P3-P5),480x640,3.874,25.563,15.03,170.29,11.87,5.9,84.3
++Attention Depth Only (+CBAM Depth),480x640,3.864,25.622,14.99,214.12,33.45,4.7,29.9
+Full Usulan (+CBAM Neck + Depth),480x640,3.876,25.623,15.03,236.65,31.22,4.2,32.0
+"Full Usulan (+CBAM, 384x640)",384x640,3.876,20.499,15.03,219.7,23.89,4.6,41.9
+Legacy Runtime (multitask_best.pt),480x640,5.448,25.041,21.14,165.36,16.5,6.0,60.6
+"Baseline (NoAttn, 384x640)",384x640,3.529,20.291,13.68,169.11,16.17,5.9,61.8
+"Baseline (NoAttn, 480x640)",480x640,3.529,25.364,13.68,199.12,9.63,5.0,103.8

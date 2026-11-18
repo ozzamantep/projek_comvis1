@@ -1,0 +1,7 @@
+Kelas,Sumber,Train,Validation,Test,Total,Proporsi (%)
+person,SUN RGB-D (132) + COCO (1924),1377,475,204,2056,46.23
+laptop,SUN RGB-D (78) + COCO (381),326,85,48,459,10.32
+cell phone,SUN RGB-D (2) + COCO (317),210,73,36,319,7.17
+bottle,SUN RGB-D (987) + COCO (626),1037,326,250,1613,36.27
+Total Kotak (Bbox),SUN RGB-D + COCO,2950,959,538,4447,100.00
+Total Citra,SUN RGB-D (2001) + COCO (749),1922,553,275,2750,100.00

@@ -1,0 +1,5 @@
+skenario,ulangan,jarak_aktual_m,prediksi_baseline_m,prediksi_attention_m,error_baseline_m,error_attention_m,kelas_baseline,kelas_attention,nama_file,timestamp
+jarak_0.5m_terang_person,1,1.0000,2.0523,1.1549,1.0523,0.1549,person,person,jarak_0.5m_terang_person_01_1794878049.png,2026-11-17T08:14:09
+jarak_0.5m_terang_person,2,1.0000,2.1765,1.1135,1.1765,0.1135,person,person,jarak_0.5m_terang_person_02_1794878054.png,2026-11-17T08:14:14
+jarak_0.5m_terang_person,3,1.0000,1.7281,1.3923,0.7281,0.3923,person,person,jarak_0.5m_terang_person_01_1794878184.png,2026-11-17T08:16:24
+jarak_0.5m_terang_person,4,1.0000,1.8175,1.4189,0.8175,0.4189,person,person,jarak_0.5m_terang_person_02_1794878184.png,2026-11-17T08:16:24

@@ -1,0 +1,9 @@
+## 4.6 Analisis Kelemahan dan Keterbatasan Model
+
+Berdasarkan hasil pengujian kuantitatif pada *test split* (275 citra) dan observasi mekanisme inferensi sistem, terdapat empat keterbatasan teknis utama:
+
+1. **Ketidakseimbangan Data antar Kelas (*Class Imbalance*)**: Pada total 4.447 anotasi *bounding box* di dataset gabungan, kelas `person` mendominasi (46,24% atau 2.056 kotak; 1.377 di *train*) dan `bottle` (36,28%), sedangkan `laptop` (10,32%; 326 di *train*) dan `cell phone` (7,17%; 210 di *train*) jauh lebih sedikit—bahkan pada subset SUN RGB-D murni hanya terdapat 2 kotak `cell phone` di seluruh dataset. Akibatnya, `AP@0.5` kelas kecil (`cell phone` dan `bottle`) tertinggal jauh di belakang `person` dan `laptop`.
+2. **Keterbatasan Estimasi Kedalaman Monokular**: Karena hanya menggunakan satu kamera RGB (*monocular*) tanpa sensor inframerah/LiDAR aktif, kualitas deteksi dan peta kedalaman sangat bergantung pada isyarat perspektif, kontras tepi, dan pencahayaan. Pada permukaan dinding polos minim tekstur atau kondisi **gelap** (pencahayaan minim), *noise* sensor meningkat dan kontras visual menurun sehingga kesalahan prediksi jarak cenderung membesar.
+3. **Sensitivitas *ROI Mapping* terhadap *Occlusion***: Pengukuran jarak mengambil median pada *patch* $15 \times 15$ di titik pusat *bounding box*. Apabila bagian tengah objek terhalang (*occluded*) oleh benda lain atau berlubang (misalnya gagang/bingkai), *patch* pusat dapat membaca kedalaman objek penghalang atau latar belakang.
+4. **Kompromi Kapasitas Fitur (*Shared Backbone/Neck*)**: Berbagi fitur *Neck* antara tugas deteksi (yang membutuhkan lokalisasi semantik kelas) dan estimasi kedalaman (yang membutuhkan gradien kontur halus beresolusi penuh) menimbulkan *trade-off* kapasitas, yang terlihat dari sedikit efek *edge blurring* pada batas tepi peta kedalaman `DepthHead` berkapasitas ringan (32 kanal proyeksi).
+

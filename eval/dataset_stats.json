@@ -1,0 +1,147 @@
+{
+  "classes": [
+    "person",
+    "laptop",
+    "cell phone",
+    "bottle"
+  ],
+  "sun_total_records": 2001,
+  "coco_total_records": 749,
+  "grand_total_records": 2750,
+  "sun_sensor_subsets": {
+    "SUNRGBD/kv1": 2001
+  },
+  "splits": {
+    "train": {
+      "sun_rgbd": 1398,
+      "coco": 524,
+      "total": 1922,
+      "sun_boxes": {
+        "person": 111,
+        "laptop": 58,
+        "cell phone": 1,
+        "bottle": 583
+      },
+      "coco_boxes": {
+        "person": 1266,
+        "laptop": 268,
+        "cell phone": 209,
+        "bottle": 454
+      },
+      "total_boxes": {
+        "person": 1377,
+        "laptop": 326,
+        "cell phone": 210,
+        "bottle": 1037
+      }
+    },
+    "validation": {
+      "sun_rgbd": 403,
+      "coco": 150,
+      "total": 553,
+      "sun_boxes": {
+        "person": 17,
+        "laptop": 16,
+        "cell phone": 1,
+        "bottle": 208
+      },
+      "coco_boxes": {
+        "person": 458,
+        "laptop": 69,
+        "cell phone": 72,
+        "bottle": 118
+      },
+      "total_boxes": {
+        "person": 475,
+        "laptop": 85,
+        "cell phone": 73,
+        "bottle": 326
+      }
+    },
+    "test": {
+      "sun_rgbd": 200,
+      "coco": 75,
+      "total": 275,
+      "sun_boxes": {
+        "person": 4,
+        "laptop": 4,
+        "cell phone": 0,
+        "bottle": 196
+      },
+      "coco_boxes": {
+        "person": 200,
+        "laptop": 44,
+        "cell phone": 36,
+        "bottle": 54
+      },
+      "total_boxes": {
+        "person": 204,
+        "laptop": 48,
+        "cell phone": 36,
+        "bottle": 250
+      }
+    }
+  },
+  "resolutions": {
+    "sun_rgbd": {
+      "count": 2001,
+      "min_wh": [
+        561,
+        427
+      ],
+      "max_wh": [
+        561,
+        427
+      ],
+      "mode_wh": [
+        561,
+        427
+      ],
+      "mode_count": 2001,
+      "unique_resolutions": {
+        "561x427": 2001
+      }
+    },
+    "coco": {
+      "count": 749,
+      "min_wh": [
+        360,
+        239
+      ],
+      "max_wh": [
+        640,
+        640
+      ],
+      "mode_wh": [
+        640,
+        480
+      ],
+      "mode_count": 166,
+      "unique_resolutions": {
+        "640x480": 166,
+        "640x427": 77,
+        "480x640": 70,
+        "500x375": 51,
+        "427x640": 28,
+        "640x426": 27,
+        "640x428": 25,
+        "640x425": 20,
+        "375x500": 18,
+        "612x612": 15
+      }
+    }
+  },
+  "depth_gt_stats_m": {
+    "valid_pixels": 438057263,
+    "total_pixels": 479333547,
+    "valid_ratio": 0.9139,
+    "cap_m": 10.0,
+    "min_m": 0.373,
+    "max_m": 10.0,
+    "mean_m": 2.411,
+    "median_m": 2.173,
+    "p2_m": 0.756,
+    "p98_m": 5.754,
+    "std_m": 1.2318
+  }
+}

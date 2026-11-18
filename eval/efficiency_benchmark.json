@@ -1,0 +1,115 @@
+{
+  "environment": {
+    "os": "Windows-10-10.0.26300-SP0",
+    "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "python": "3.10.0",
+    "pytorch": "2.5.1+cu121",
+    "cuda_available": true,
+    "opencv": "4.11.0",
+    "warmup_iters": 50,
+    "measure_iters": 200,
+    "batch_size": 1
+  },
+  "results": [
+    {
+      "model": "Baseline (YOLO26nDepth)",
+      "input_res": "480x640",
+      "params_m": 3.863,
+      "gflops": 25.562,
+      "size_mb": 14.98,
+      "latency_cpu_ms": 151.44,
+      "latency_gpu_ms": 11.48,
+      "fps_cpu": 6.6,
+      "fps_gpu": 87.1
+    },
+    {
+      "model": "Baseline (YOLO26nDepth, 384x640)",
+      "input_res": "384x640",
+      "params_m": 3.863,
+      "gflops": 20.449,
+      "size_mb": 14.98,
+      "latency_cpu_ms": 131.75,
+      "latency_gpu_ms": 9.91,
+      "fps_cpu": 7.6,
+      "fps_gpu": 100.9
+    },
+    {
+      "model": "+Attention Neck Only (+CBAM P3-P5)",
+      "input_res": "480x640",
+      "params_m": 3.874,
+      "gflops": 25.563,
+      "size_mb": 15.03,
+      "latency_cpu_ms": 170.29,
+      "latency_gpu_ms": 11.87,
+      "fps_cpu": 5.9,
+      "fps_gpu": 84.3
+    },
+    {
+      "model": "+Attention Depth Only (+CBAM Depth)",
+      "input_res": "480x640",
+      "params_m": 3.864,
+      "gflops": 25.622,
+      "size_mb": 14.99,
+      "latency_cpu_ms": 214.12,
+      "latency_gpu_ms": 33.45,
+      "fps_cpu": 4.7,
+      "fps_gpu": 29.9
+    },
+    {
+      "model": "Full Usulan (+CBAM Neck + Depth)",
+      "input_res": "480x640",
+      "params_m": 3.876,
+      "gflops": 25.623,
+      "size_mb": 15.03,
+      "latency_cpu_ms": 236.65,
+      "latency_gpu_ms": 31.22,
+      "fps_cpu": 4.2,
+      "fps_gpu": 32.0
+    },
+    {
+      "model": "Full Usulan (+CBAM, 384x640)",
+      "input_res": "384x640",
+      "params_m": 3.876,
+      "gflops": 20.499,
+      "size_mb": 15.03,
+      "latency_cpu_ms": 219.7,
+      "latency_gpu_ms": 23.89,
+      "fps_cpu": 4.6,
+      "fps_gpu": 41.9
+    },
+    {
+      "model": "Legacy Runtime (multitask_best.pt)",
+      "input_res": "480x640",
+      "params_m": 5.448,
+      "gflops": 25.041,
+      "size_mb": 21.14,
+      "latency_cpu_ms": 165.36,
+      "latency_gpu_ms": 16.5,
+      "fps_cpu": 6.0,
+      "fps_gpu": 60.6
+    },
+    {
+      "model": "Baseline (NoAttn, 384x640)",
+      "input_res": "384x640",
+      "params_m": 3.529,
+      "gflops": 20.291,
+      "size_mb": 13.68,
+      "latency_cpu_ms": 169.11,
+      "latency_gpu_ms": 16.17,
+      "fps_cpu": 5.9,
+      "fps_gpu": 61.8
+    },
+    {
+      "model": "Baseline (NoAttn, 480x640)",
+      "input_res": "480x640",
+      "params_m": 3.529,
+      "gflops": 25.364,
+      "size_mb": 13.68,
+      "latency_cpu_ms": 199.12,
+      "latency_gpu_ms": 9.63,
+      "fps_cpu": 5.0,
+      "fps_gpu": 103.8
+    }
+  ]
+}
