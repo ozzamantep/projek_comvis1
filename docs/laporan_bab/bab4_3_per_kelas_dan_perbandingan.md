@@ -75,17 +75,26 @@ Seluruh pengujian kuantitatif pada sub-bab ini dijalankan pada ***held-out test 
 | Skenario Uji | Jarak Aktual (m) | Error Baseline (m) ↓ | Error +Attention (m) ↓ |
 |--------------|-----------------:|---------------------:|-----------------------:|
 | **A. Pencahayaan Terang (`jarak_*_terang_person`)** | | | |
-| Jarak Dekat (Terang) | 0,50 | belum diukur | belum diukur |
-| Jarak Sedang (Terang) | 1,00 | belum diukur | belum diukur |
-| Jarak Jauh (Terang) | 2,00 | belum diukur | belum diukur |
+| Jarak Dekat (Terang, `person`) | 0,50 | 1,078 ± 0,076 *(n=3)* | **1,048 ± 0,010 *(n=3)*** |
+| Jarak Sedang (Terang, `person`) | 1,00 | **0,493 *(n=1)*** | 0,806 *(n=1)* |
+| Jarak Jauh (Terang, `person`) | 2,00 | 0,549 *(n=1)* | **0,476 *(n=1)*** |
 | **B. Variasi Pencahayaan: Gelap (`jarak_*_gelap_person`)** | | | |
-| Jarak Dekat (Gelap) | 0,50 | belum diukur | belum diukur |
-| Jarak Sedang (Gelap) | 1,00 | belum diukur | belum diukur |
-| Jarak Jauh (Gelap) | 2,00 | belum diukur | belum diukur |
-| **C. Kondisi Khusus** | | | |
-| *Occlusion* (Terhalang Sebagian) | 1,00 | belum diukur | belum diukur |
-| Dinding Polos (*Low-texture*) | 1,50 | belum diukur | belum diukur |
+| Jarak Dekat (Gelap, `person`) | 0,50 | tidak terdeteksi *(n=1)* | **1,165 *(n=1)*** |
+| Jarak Sedang (Gelap, `person`) | 1,00 | tidak terdeteksi *(n=1)* | **0,951 *(n=1)*** |
+| Jarak Jauh (Gelap, `person`) | 2,00 | 0,273 *(n=1)* | **0,033 *(n=1)*** |
+| **C. Kondisi Khusus & Objek Target Lain** | | | |
+| *Occlusion* (Terhalang Sebagian, `person`) | 1,00 | **0,312 *(n=1)*** | 0,524 *(n=1)* |
+| Dinding Polos (*Low-texture*) | 1,50 | tidak terdeteksi *(n=1)* | tidak terdeteksi *(n=1)* |
+| Objek `bottle` (Terang, 0,50 m)* | 0,50 | 0,892 ± 0,142 *(n=4)* | 1,208 ± 0,008 *(n=4)* |
+| Objek `bottle` (Terang, 1,00 m)* | 1,00 | 0,570 ± 0,004 *(n=2)* | 1,017 ± 0,012 *(n=2)* |
+| Objek `laptop` (Terang, 1,00 m) | 1,00 | **0,190 *(n=1)*** | 0,612 *(n=1)* (`person`) |
+| Objek `cell phone` (Terang, 0,50 m)* | 0,50 | 1,105 ± 0,018 *(n=3)* | 1,217 ± 0,022 *(n=3)* |
 
-*Sumber: Penulis (`eval/webcam_measurements.csv`)*
+*\*Catatan: Pada skenario `bottle` dan `cell phone` di depan webcam, kotak dengan confidence tertinggi yang terekam pada `eval/webcam_measurements.csv` adalah `person` (pemegang objek) atau `laptop`, bukan kelas objek kecil itu sendiri. Empat baris uji coba lama tanggal 2026-11-17 diabaikan.*
 
-**Kesimpulan Tabel 4.6**: `[ISI SETELAH DATA DIUKUR]` — Ringkas selisih *error* rata-rata (`mean ± std`) antara Baseline dan +Attention pada kondisi **Terang vs Gelap** di jarak `0,5 m`, `1,0 m`, dan `2,0 m`, serta degradasi akurasi pada kondisi gelap (minim pencahayaan), *occlusion*, dan dinding polos setelah pengukuran fisik menggunakan `scripts/capture_compare.py` selesai dilakukan.
+*Sumber: Penulis (`eval/tabel_4_6_summary.csv` & `eval/webcam_measurements.csv` tanggal 2026-11-18)*
+
+**Kesimpulan Tabel 4.6**:
+1. **Ketahanan Pencahayaan (Terang vs Gelap)**: Pada kondisi gelap di jarak `0,50 m` dan `1,00 m`, **Baseline (Tanpa Attention) gagal mendeteksi objek `person` sama sekali**, sedangkan **+Attention** tetap mampu mendeteksi `person` (`error` `1,165 m` dan `0,951 m`), dan pada jarak `2,00 m` gelap mencatat `error` `0,033 m` (*n=1*) dibanding Baseline `0,273 m`. Karena sebagian skenario gelap baru diukur `n=1`, temuan ini bersifat indikatif.
+2. **Bias Skala Jarak Dekat (Uncalibrated Webcam)**: Pada jarak dekat `0,50 m` (terang), kedua model menunjukkan *error* besar yang konsisten (`1,078 ± 0,076 m` vs `1,048 ± 0,010 m`, prediksi ~`1,55–1,62 m`), disebabkan oleh perbedaan panjang fokal (*focal length*) webcam laptop terhadap kamera Kinect v1 SUN RGB-D tanpa kalibrasi *offset* (`scale=1,0, offset=0,0`).
+3. **Kasus Khusus & Objek Kecil**: Pada *occlusion* (`1,00 m`), Baseline mencatat `error` `0,312 m` vs +Attention `0,524 m`. Pada dinding polos (`1,50 m`), kedua model tidak menghasilkan deteksi dan peta kedalaman *INFERNO* menunjukkan artefak kedalaman di area minim tekstur. Pada skenario `bottle` dan `cell phone` yang dipegang di depan kamera, deteksi masih didominasi kelas `person`.
